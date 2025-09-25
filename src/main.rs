@@ -1,4 +1,4 @@
-use bevy::{asset::RenderAssetUsages, image::{self, Image}, log::tracing_subscriber, math::ops::floor, render::render_resource::{Extent3d, Texture, TextureDimension, TextureFormat}};
+use bevy::{asset::RenderAssetUsages, image::Image, log::tracing_subscriber, render::render_resource::{Extent3d, TextureDimension, TextureFormat}};
 use bevy::prelude::*;
 use terrain::noise::perlin::{Perlin, Seed};
 use tracing::info;
@@ -25,7 +25,7 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         let fx = x as f32 * scale;
         let fy = y as f32 * scale;
 
-        let sample = perlin.from_sample(seed, fx, fy);
+        let sample = perlin.from_fractal(seed, fx, fy, 3, 2.0, 0.5);
 
         let value = ((sample + 1.0) * 0.5 * 255.0) as u8;
         pixels.push(value);
