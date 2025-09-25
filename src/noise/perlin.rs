@@ -102,7 +102,7 @@ impl Perlin {
         let mut amplitude = 1.;
         let mut max_amplitude = 0.;
 
-        for i in 0..octaves {
+        for _ in 0..octaves {
             total += self.from_sample(seed, x * frequency, y * frequency) * amplitude;
             max_amplitude += amplitude;
             frequency *= lacunarity;
