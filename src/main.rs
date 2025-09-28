@@ -41,12 +41,14 @@ fn init_resources(mut commands: Commands) {
 fn load_chunks (
     chunkbase: Res<Chunkbase>,
     render_distance: Res<RenderDistance>,
+    mut player: Query<&mut Player>,
     mut chunk_radius: ResMut<ChunkRadius>,
     mut materials: ResMut<Assets<StandardMaterial>>, 
     mut meshes: ResMut<Assets<Mesh>>,
     mut events: EventReader<CurrentChunk>, 
     mut commands: Commands
 ) {
+    let mut player = player.single_mut().unwrap();
     let stone = materials.add(StandardMaterial {
         base_color: GRAY.into(),
         perceptual_roughness: 0.5,
@@ -54,6 +56,7 @@ fn load_chunks (
     });
 
     for CurrentChunk((chunk_x, chunk_y)) in events.read() {
+        player.current_chunk = CurrentChunk((*chunk_x, *chunk_y));
         for chunk in chunk_radius.0.drain(..) {
             commands.entity(chunk).despawn();
         }
@@ -61,6 +64,27 @@ fn load_chunks (
         let mut chunk_handles = Vec::new();
 
         for chunk in chunkbase.load_chunks(*chunk_x, *chunk_y, render_distance.0) {
+            chunk_handles.push(meshes.add(chunk.get_mesh().as_ref().unwrap().clone()));
+        }
+
+        for handle in &chunk_handles {
+            chunk_radius.0.push(commands.spawn((
+                Mesh3d(handle.clone()),
+                MeshMaterial3d(stone.clone()),        
+                CustomUV,
+            )).id());
+        }
+    }
+
+    if render_distance.is_changed() {
+        let (chunk_x, chunk_y) = player.current_chunk.0;
+        for chunk in chunk_radius.0.drain(..) {
+            commands.entity(chunk).despawn();
+        }
+
+        let mut chunk_handles = Vec::new();
+
+        for chunk in chunkbase.load_chunks(chunk_x, chunk_y, render_distance.0) {
             chunk_handles.push(meshes.add(chunk.get_mesh().as_ref().unwrap().clone()));
         }
 

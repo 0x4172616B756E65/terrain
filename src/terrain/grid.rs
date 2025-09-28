@@ -7,11 +7,12 @@ pub struct GridPlugin;
 #[derive(Resource, Default)]
 struct LastChunk((i32, i32));
 
-#[derive(Resource, Default)]
-pub struct ChunkRadius(pub Vec<Entity>);
-
 #[derive(Event)]
 pub struct CurrentChunk(pub (i32, i32));
+
+
+#[derive(Resource, Default)]
+pub struct ChunkRadius(pub Vec<Entity>);
 
 impl Plugin for GridPlugin {
     fn build(&self, app: &mut App) {
