@@ -1,8 +1,8 @@
-use bevy::{color::palettes::css::{GRAY, WHITE}, log::tracing_subscriber, pbr::light_consts::lux::OVERCAST_DAY};
+use bevy::{color::palettes::css::{GRAY, WHITE}, ecs::error::info, log::tracing_subscriber, pbr::light_consts::lux::OVERCAST_DAY};
 use bevy::prelude::*;
 use bevy_rapier3d::{plugin::{NoUserData, RapierPhysicsPlugin}, prelude::{Collider, KinematicCharacterController}, render::RapierDebugRenderPlugin};
 use sysinfo::System;
-use terrain::{noise::perlin::Perlin, player::{cursor::CursorPlugin, player::{Player, PlayerPlugin}}, terrain::{chunks::Chunkbase, grid::{CurrentChunk, GridPlugin}}};
+use terrain::{noise::perlin::Perlin, player::{cursor::CursorPlugin, player::{Player, PlayerPlugin}}, terrain::{chunks::{Chunk, Chunkbase}, grid::{CurrentChunk, GridPlugin}}};
 
 #[derive(Component)]
 struct CustomUV;
@@ -19,17 +19,30 @@ fn main() {
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugins(RapierDebugRenderPlugin::default())
         .add_plugins(CursorPlugin)
-        .add_systems(Startup, (setup_scene, spawn_terrain))
-        .add_systems(Update, debug)
+        .add_systems(Startup, (setup_scene, init_resources))
+        .add_systems(Update, (load_chunks, debug))
         .run();
 }
 
 
 
-fn spawn_terrain(mut commands: Commands, mut materials: ResMut<Assets<StandardMaterial>>, mut meshes: ResMut<Assets<Mesh>>) {
+fn init_resources(mut commands: Commands) {
     let perlin = Perlin::new(1, 0.1, 4, 2., 0.5);
     let chunkbase: Chunkbase = Chunkbase::new_with_mesh(32, 32, &perlin, true);
 
+    commands.spawn(Collider::cuboid(1000., 0., 1000.));
+    commands.insert_resource(perlin);
+    commands.insert_resource(chunkbase);
+}
+
+//TODO init perlin as res
+fn load_chunks(
+    chunkbase: Res<Chunkbase>,
+    mut materials: ResMut<Assets<StandardMaterial>>, 
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut events: EventReader<CurrentChunk>, 
+    mut commands: Commands
+) {
     let stone = materials.add(StandardMaterial {
         base_color: GRAY.into(),
         perceptual_roughness: 0.5,
@@ -37,24 +50,20 @@ fn spawn_terrain(mut commands: Commands, mut materials: ResMut<Assets<StandardMa
     });
 
     let mut mesh_handles = Vec::new();
-    for chunk in chunkbase.load_chunks(4, 4, 4) {
-        //info!("{:?}", chunk.vertex_buffer);
-        //info!("{:?}", chunk.index_buffer);
-        mesh_handles.push(meshes.add(chunk.get_mesh().as_ref().unwrap().clone()));
+
+    for CurrentChunk((chunk_x, chunk_y)) in events.read() {
+        for chunk in chunkbase.load_chunks(*chunk_x, *chunk_y, 4) {
+            mesh_handles.push(meshes.add(chunk.get_mesh().as_ref().unwrap().clone()));
+        }
+
+        for handle in &mesh_handles {
+            commands.spawn((
+                Mesh3d(handle.clone()),
+                MeshMaterial3d(stone.clone()),        
+                CustomUV,
+            ));
+        }
     }
-
-    for handle in mesh_handles {
-        commands.spawn((
-            Mesh3d(handle),
-            MeshMaterial3d(stone.clone()),        
-            CustomUV,
-        ));
-    }
-
-
-    commands.spawn((
-        Collider::cuboid(1000., 0., 1000.),
-    ));
 }
 
 fn setup_scene(mut commands: Commands) {
@@ -84,6 +93,7 @@ fn setup_scene(mut commands: Commands) {
         },
     ));
 }
+
 
 fn debug(mut text_query: Query<&mut Text>, player_query: Query<(&Player, &Transform, &KinematicCharacterController)>, mut sys: Local<System>, mut events: EventReader<CurrentChunk>) {
     let (player, transform, controller) = player_query.single().unwrap();

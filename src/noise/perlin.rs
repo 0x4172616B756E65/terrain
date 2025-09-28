@@ -1,6 +1,6 @@
 use std::u64;
 
-use bevy::math::ops::floor;
+use bevy::{ecs::resource::Resource, math::ops::floor};
 use rand::{self, rngs::StdRng, seq::SliceRandom, SeedableRng};
 use tracing::info;
 
@@ -15,7 +15,7 @@ const VECTORS: [Vector; 8] = [
     Vector { x: -0.70710677, y: -0.70710677 },
 ];
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Resource)]
 pub struct Perlin {
     pub seed: [u8; 512], 
     pub scale: f32,

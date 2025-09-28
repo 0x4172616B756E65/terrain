@@ -1,14 +1,15 @@
 use std::{collections::HashMap, sync::Arc};
 
-use bevy::{asset::RenderAssetUsages, math::Vec3, render::mesh::{Indices, Mesh, PrimitiveTopology}};
+use bevy::{asset::RenderAssetUsages, ecs::resource::Resource, math::Vec3, render::mesh::{Indices, Mesh, PrimitiveTopology}};
 use bevy_rapier3d::{na::{DMatrix, Vector3}, prelude::Collider};
 
 use crate::noise::perlin::Perlin;
 
-pub struct Chunkbase(HashMap<(usize, usize), Chunk>);
+#[derive(Resource, Debug)]
+pub struct Chunkbase(HashMap<(i32, i32), Chunk>);
 
 impl Chunkbase { 
-    pub fn new(height: usize, width: usize, perlin: &Perlin) -> Self { 
+    pub fn new(height: i32, width: i32, perlin: &Perlin) -> Self { 
         let mut chunks = HashMap::new();
         for y in 0..height {
             for x in 0..width {
@@ -18,7 +19,7 @@ impl Chunkbase {
         Chunkbase(chunks)
     }
 
-    pub fn new_with_mesh(height: usize, width: usize, perlin: &Perlin, normals: bool) -> Self { 
+    pub fn new_with_mesh(height: i32, width: i32, perlin: &Perlin, normals: bool) -> Self { 
         let mut chunks = HashMap::new();
         for y in 0..height {
             for x in 0..width {
@@ -33,7 +34,7 @@ impl Chunkbase {
         Chunkbase(chunks)
     }
 
-    pub fn load_chunks(&self, cx: usize, cy: usize, radius: i32) -> Vec<&Chunk> {
+    pub fn load_chunks(&self, cx: i32, cy: i32, radius: i32) -> Vec<&Chunk> {
         let mut chunks = Vec::with_capacity((radius * 2 + 1).pow(2) as usize);
         let radius_sq = radius * radius;
 
@@ -41,7 +42,7 @@ impl Chunkbase {
             let y_sq = y * y;
             for x in -radius..=radius {
                 if x * x + y_sq <= radius_sq {
-                    let chunk_coords = (cx.wrapping_add(x as usize), cy.wrapping_add(y as usize));
+                    let chunk_coords = (cx.wrapping_add(x), cy.wrapping_add(y));
                     if let Some(chunk) = self.0.get(&chunk_coords) {
                         chunks.push(chunk);
                     }
@@ -53,6 +54,7 @@ impl Chunkbase {
     }
 }
 
+#[derive(Debug)]
 pub struct Chunk {
     pub  vertex_buffer: Vec<[f32; 3]>,
     pub  index_buffer: Vec<u32>,
@@ -60,7 +62,7 @@ pub struct Chunk {
 }   
 
 impl Chunk {
-    pub fn new(chunk_x: usize, chunk_y: usize, perlin: &Perlin) -> Self {
+    pub fn new(chunk_x: i32, chunk_y: i32, perlin: &Perlin) -> Self {
         let mut vertex_buffer: Vec<[f32; 3]> = Vec::with_capacity(1024);  
         let mut index_buffer: Vec<u32> = Vec::with_capacity(5766);
 
