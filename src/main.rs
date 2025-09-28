@@ -1,198 +1,109 @@
-use bevy::{asset::RenderAssetUsages, image::Image, log::tracing_subscriber, render::{mesh::{Indices, PrimitiveTopology}, render_resource::{Extent3d, TextureDimension, TextureFormat}}};
+use bevy::{color::palettes::css::{GRAY, WHITE}, log::tracing_subscriber, pbr::light_consts::lux::OVERCAST_DAY};
 use bevy::prelude::*;
-use terrain::noise::perlin::{Perlin, Seed};
-use tracing::info;
+use bevy_rapier3d::{plugin::{NoUserData, RapierPhysicsPlugin}, prelude::{Collider, KinematicCharacterController}, render::RapierDebugRenderPlugin};
+use sysinfo::System;
+use terrain::{noise::perlin::Perlin, player::{cursor::CursorPlugin, player::{Player, PlayerPlugin}}, terrain::{chunks::Chunkbase, grid::{CurrentChunk, GridPlugin}}};
 
 #[derive(Component)]
 struct CustomUV;
 
-struct Vertex {
-    position: Vec3,
-    normal: Vec3,
-    uv: Vec2, // optional
-}
 
-struct RGBA {
-    red: u8,
-    green: u8,
-    blue: u8,
-    alpha: u8,
-}
-
-impl RGBA {
-    const RED: RGBA = RGBA { red: 255, green: 0, blue: 0, alpha: 255 };
-    const GREEN: RGBA = RGBA { red: 0, green: 255, blue: 0, alpha: 255 };
-    const BLUE: RGBA = RGBA { red: 0, green: 0, blue: 255, alpha: 255 };
-
-    pub fn new(red: u8, green: u8, blue: u8, alpha: u8) -> Self { RGBA { red, green, blue, alpha }}
-}
 
 fn main() {
     tracing_subscriber::fmt().init();
 
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_systems(Startup, setup_camera)
-        .add_systems(Startup, setup_3d)
+        .add_plugins(PlayerPlugin)
+        .add_plugins(GridPlugin)
+        .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
+        .add_plugins(RapierDebugRenderPlugin::default())
+        .add_plugins(CursorPlugin)
+        .add_systems(Startup, (setup_scene, spawn_terrain))
+        .add_systems(Update, debug)
         .run();
 }
 
-fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
-    let perlin = Perlin::new();
-    let seed = Seed::new(1); 
-    let width: u32 = 1024;
-    let height: u32 = 1024;
-    let mut pixels: Vec<u8> = Vec::with_capacity((width * height * 4) as usize);
-    let scale = 0.01;
 
-    for y in 0..height {
-        for x in 0..width {
-        let fx = x as f32 * scale;
-        let fy = y as f32 * scale;
 
-        let sample = perlin.from_fractal(seed, fx, fy, 3, 2.0, 0.5);
+fn spawn_terrain(mut commands: Commands, mut materials: ResMut<Assets<StandardMaterial>>, mut meshes: ResMut<Assets<Mesh>>) {
+    let perlin = Perlin::new(1, 0.1, 4, 2., 0.5);
+    let chunkbase: Chunkbase = Chunkbase::new_with_mesh(32, 32, &perlin, true);
 
-        let value = ((sample + 1.0) * 0.5 * 255.0) as u8;
-        //let pixel: RGBA = RGBA::new(value, value, value, 255);
-
-        let pixel = match value {
-            0..128 => RGBA::BLUE,
-            _ => RGBA::GREEN
-        };
-
-        pixels.push(pixel.red);
-        pixels.push(pixel.green);
-        pixels.push(pixel.blue);
-        pixels.push(pixel.alpha);
-        }
-    } 
-
-    info!("{:?}", pixels);
-
-    let extent = Extent3d {
-        width,
-        height,
-        depth_or_array_layers: 1,
-    };
-
-    let image = Image::new_fill(extent, TextureDimension::D2, &pixels, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::RENDER_WORLD);
-    let image_handle = images.add(image);
-    commands.spawn(Camera2d);
-
-    commands.spawn(Sprite {
-        image: image_handle,
+    let stone = materials.add(StandardMaterial {
+        base_color: GRAY.into(),
+        perceptual_roughness: 0.5,
         ..default()
     });
-}
 
-fn setup_3d(mut commands: Commands, mut materials: ResMut<Assets<StandardMaterial>>, mut meshes: ResMut<Assets<Mesh>>) {
-    let perlin = Perlin::new();
-    let seed = Seed::new(1);
-    let width = 256u32;
-    let height = 256u32;
-    let scale = 0.1;
-
-
-    let mut vertices = Vec::with_capacity((width * height) as usize);
-    for y in 0..height {
-        for x in 0..width {
-            let fx = x as f32 * scale;
-            let fy = y as f32 * scale;
-            let z = (perlin.from_fractal(seed, fx, fy, 4, 2.0, 0.5) + 0.5).powi(4) * 10.;
-            info!("{z}");
-
-            vertices.push([x as f32, z, y as f32]); // [x, height, y]
-        }
+    let mut mesh_handles = Vec::new();
+    for chunk in chunkbase.load_chunks(4, 4, 4) {
+        //info!("{:?}", chunk.vertex_buffer);
+        //info!("{:?}", chunk.index_buffer);
+        mesh_handles.push(meshes.add(chunk.get_mesh().as_ref().unwrap().clone()));
     }
 
-    let mut indices = Vec::with_capacity(((width - 1) * (height - 1) * 6) as usize);
-    for y in 0..height - 1 {
-        for x in 0..width - 1 {
-            let i0 = x + y * width;
-            let i1 = i0 + 1;
-            let i2 = i0 + width;
-            let i3 = i2 + 1;
-
-            // Two triangles per quad
-            indices.push(i0);
-            indices.push(i3);
-            indices.push(i1);
-
-            indices.push(i0);
-            indices.push(i2);
-            indices.push(i3);
-        }
+    for handle in mesh_handles {
+        commands.spawn((
+            Mesh3d(handle),
+            MeshMaterial3d(stone.clone()),        
+            CustomUV,
+        ));
     }
 
-    let mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vertices.clone())
-        .with_inserted_indices(Indices::U32(indices));
-
-    let mesh_handle = meshes.add(mesh);
 
     commands.spawn((
-        Mesh3d(mesh_handle),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Srgba::hex("28221B").unwrap().into(),
-            perceptual_roughness: 1.0,
-            ..default()
-        })),
-        CustomUV
+        Collider::cuboid(1000., 0., 1000.),
     ));
 }
 
-fn setup_camera(mut commands: Commands) {
-    let camera_and_light_transform =
-        Transform::from_xyz(-100., 100., -100.).looking_at(Vec3::new(128., -2., 128.), Vec3::Y);
+fn setup_scene(mut commands: Commands) {
+    let light_transform = Transform::from_xyz(128., 64., 128.).looking_at(Vec3::new(128., 0., 128.), Vec3::Y);
 
-    commands.spawn((Camera3d::default(), camera_and_light_transform));
-    commands.spawn((PointLight::default(), camera_and_light_transform));
 
+    commands.insert_resource(AmbientLight {
+        color: WHITE.into(),
+        brightness: 0.2,
+        ..default()
+    });
+
+    //commands.spawn((Camera3d::default(), light_transform));
+    
+    commands.spawn((DirectionalLight {
+        illuminance: OVERCAST_DAY, 
+        ..Default::default()
+    }, light_transform));
+
+    commands.spawn((
+        Text::new(""),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(12.0),
+            left: Val::Px(12.0),
+            ..default()
+        },
+    ));
 }
 
-fn create_cube_mesh() -> Mesh {
-     Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD)
-    .with_inserted_attribute(
-        Mesh::ATTRIBUTE_POSITION,
-        vec![
+fn debug(mut text_query: Query<&mut Text>, player_query: Query<(&Player, &Transform, &KinematicCharacterController)>, mut sys: Local<System>, mut events: EventReader<CurrentChunk>) {
+    let (player, transform, controller) = player_query.single().unwrap();
+    let x = transform.translation.x;
+    let y = transform.translation.y;
+    let z = transform.translation.z;
 
-            [-0.5, 0.5, -0.5], // vertex with index 0
-            [0.5, 0.5, -0.5], // vertex with index 1
-            [0.5, 0.5, 0.5], // etc. until 23
-            [-0.5, 0.5, 0.5],
-            // bottom   (-y)
-            [-0.5, -0.5, -0.5],
-            [0.5, -0.5, -0.5],
-            [0.5, -0.5, 0.5],
-            [-0.5, -0.5, 0.5],
-            // right    (+x)
-            [0.5, -0.5, -0.5],
-            [0.5, -0.5, 0.5],
-            [0.5, 0.5, 0.5], // This vertex is at the same position as vertex with index 2, but they'll have different UV and normal
-            [0.5, 0.5, -0.5],
-            // left     (-x)
-            [-0.5, -0.5, -0.5],
-            [-0.5, -0.5, 0.5],
-            [-0.5, 0.5, 0.5],
-            [-0.5, 0.5, -0.5],
-            // back     (+z)
-            [-0.5, -0.5, 0.5],
-            [-0.5, 0.5, 0.5],
-            [0.5, 0.5, 0.5],
-            [0.5, -0.5, 0.5],
-            // forward  (-z)
-            [-0.5, -0.5, -0.5],
-            [-0.5, 0.5, -0.5],
-            [0.5, 0.5, -0.5],
-            [0.5, -0.5, -0.5],
-        ],
-    )
-    .with_inserted_indices(Indices::U32(vec![
-        0,3,1 , 1,3,2, // triangles making up the top (+y) facing side.
-        4,5,7 , 5,6,7, // bottom (-y)
-        8,11,9 , 9,11,10, // right (+x)
-        12,13,15 , 13,14,15, // left (-x)
-        16,19,17 , 17,19,18, // back (+z)
-        20,21,23 , 21,22,23, // forward (-z)
-    ]))
+    let mut text = text_query.single_mut().unwrap();
+    sys.refresh_memory();
+    let used = sys.used_memory() / 1024;
+
+    for CurrentChunk((chunk_x, chunk_y)) in events.read() {
+        let chunk = format!("Entered chunk {chunk_x}, {chunk_y}");
+
+    text.clear();
+    text.push_str(&format!("
+        X: {x} Y: {y} Z: {z}\n
+        RAM: {:?}\n
+        {:?}\n
+        {chunk}",
+    used, player.momentum));
+    }
 }

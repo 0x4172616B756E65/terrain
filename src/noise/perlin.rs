@@ -16,20 +16,13 @@ const VECTORS: [Vector; 8] = [
 ];
 
 #[derive(Debug, Clone, Copy)]
-pub struct Seed([u8; 512]);
+pub struct Perlin {
+    pub seed: [u8; 512], 
+    pub scale: f32,
 
-impl Seed {
-    pub fn new(seed: u64) -> Self {
-        let mut table_256: [u8; 256] = (0..=255u8).collect::<Vec<u8>>().try_into().unwrap();
-        let mut rng = StdRng::seed_from_u64(seed);
-        table_256.shuffle(&mut rng);
-
-        let mut table_512 = [0u8; 512];
-        table_512[..256].copy_from_slice(&table_256);
-        table_512[256..].copy_from_slice(&table_256);
-
-        Seed(table_512)
-    }
+    pub octaves: usize,
+    pub lacunarity: f32,
+    pub persistence: f32,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -54,25 +47,34 @@ impl std::fmt::Display for Vector {
         write!(f, "({}, {})", self.x, self.y)
     }
 }
-#[derive(Debug)]
-pub struct Perlin;
+
 
 impl Perlin {
-    pub fn new() -> Self { Perlin }
+    pub fn new(seed: u64, scale: f32, octaves: usize, lacunarity: f32, persistence: f32) -> Self {
+        let mut table_256: [u8; 256] = (0..=255u8).collect::<Vec<u8>>().try_into().unwrap();
+        let mut rng = StdRng::seed_from_u64(seed);
+        table_256.shuffle(&mut rng);
 
-    pub fn from_point(&self, seed: Seed, x: usize, y: usize) -> Vector {
-        let index = seed.0[(seed.0[x % 256] as usize + y % 256) % 256] % VECTORS.len() as u8; 
+        let mut table_512 = [0u8; 512];
+        table_512[..256].copy_from_slice(&table_256);
+        table_512[256..].copy_from_slice(&table_256);
+
+        Perlin { seed: table_512, scale, octaves, lacunarity, persistence }
+    }
+
+    pub fn from_point(&self, x: usize, y: usize) -> Vector {
+        let index = self.seed[(self.seed[x % 256] as usize + y % 256) % 256] % VECTORS.len() as u8; 
         VECTORS[index as usize]
     }
 
-    pub fn from_sample(&self, seed: Seed, x: f32, y: f32) -> f32 {
+    pub fn from_sample(&self, x: f32, y: f32) -> f32 {
         let x0 = floor(x) as usize;
         let y0 = floor(y) as usize;
 
-        let g00 = self.from_point(seed, x0, y0);
-        let g10 = self.from_point(seed, x0+1, y0);
-        let g01 = self.from_point(seed, x0, y0+1);
-        let g11 = self.from_point(seed, x0+1, y0+1);
+        let g00 = self.from_point(x0, y0);
+        let g10 = self.from_point(x0+1, y0);
+        let g01 = self.from_point(x0, y0+1);
+        let g11 = self.from_point(x0+1, y0+1);
 
         let dx = x - x0 as f32;
         let dy = y - y0 as f32;
@@ -96,44 +98,20 @@ impl Perlin {
         lerp(nx0, nx1, fade_y)
     }
 
-    pub fn from_fractal(&self, seed: Seed, x: f32, y: f32, octaves: usize, lacunarity: f32, persistence: f32) -> f32 {
+    pub fn from_fractal(&self, x: f32, y: f32) -> f32 {
         let mut total = 0.;
         let mut frequency = 1.;
         let mut amplitude = 1.;
         let mut max_amplitude = 0.;
 
-        for _ in 0..octaves {
-            total += self.from_sample(seed, x * frequency, y * frequency) * amplitude;
+        for _ in 0..self.octaves {
+            total += self.from_sample(x * frequency, y * frequency) * amplitude;
             max_amplitude += amplitude;
-            frequency *= lacunarity;
-            amplitude *= persistence;
+            frequency *= self.lacunarity;
+            amplitude *= self.persistence;
         }
 
         total / max_amplitude
-    }
-
-    #[deprecated(note="never use this")]
-    pub fn from_sample_critical(&self, seed: Seed, x: f32, y: f32) -> f32 {
-        (
-            (
-                self.from_point(seed, x.floor() as usize, y.floor() as usize).x * (x - x.floor()) +
-                self.from_point(seed, x.floor() as usize, y.floor() as usize).y * (y - y.floor())
-            ) * (1.0 - (x - x.floor())*(x - x.floor())*(x - x.floor())*((x - x.floor())*((x - x.floor())*6. - 15.) + 10.)) +
-            (
-                self.from_point(seed, (x.floor() as usize)+1, y.floor() as usize).x * ((x - x.floor()) - 1.0) +
-                self.from_point(seed, (x.floor() as usize)+1, y.floor() as usize).y * (y - y.floor())
-            ) * ((x - x.floor())*(x - x.floor())*(x - x.floor())*((x - x.floor())*((x - x.floor())*6. - 15.) + 10.))
-        ) * (1.0 - (y - y.floor())*(y - y.floor())*(y - y.floor())*((y - y.floor())*((y - y.floor())*6. - 15.) + 10.)) +
-        (
-            (
-                self.from_point(seed, x.floor() as usize, (y.floor() as usize)+1).x * (x - x.floor()) +
-                self.from_point(seed, x.floor() as usize, (y.floor() as usize)+1).y * ((y - y.floor()) - 1.0)
-            ) * (1.0 - (x - x.floor())*(x - x.floor())*(x - x.floor())*((x - x.floor())*((x - x.floor())*6. - 15.) + 10.)) +
-            (
-                self.from_point(seed, (x.floor() as usize)+1, (y.floor() as usize)+1).x * ((x - x.floor()) - 1.0) +
-                self.from_point(seed, (x.floor() as usize)+1, (y.floor() as usize)+1).y * ((y - y.floor()) - 1.0)
-            ) * ((x - x.floor())*(x - x.floor())*(x - x.floor())*((x - x.floor())*((x - x.floor())*6. - 15.) + 10.))
-        ) * ((y - y.floor())*(y - y.floor())*(y - y.floor())*((y - y.floor())*((y - y.floor())*6. - 15.) + 10.))
     }
 }
 
