@@ -7,6 +7,9 @@ pub struct GridPlugin;
 #[derive(Resource, Default)]
 struct LastChunk((i32, i32));
 
+#[derive(Resource, Default)]
+pub struct ChunkRadius(pub Vec<Entity>);
+
 #[derive(Event)]
 pub struct CurrentChunk(pub (i32, i32));
 
@@ -20,8 +23,6 @@ impl Plugin for GridPlugin {
     }
 }
 
-
-
 fn enter_chunk_event(
     mut last_chunk: ResMut<LastChunk>,
     player_query: Query<&Transform, With<Player>>,
@@ -34,7 +35,7 @@ fn enter_chunk_event(
     );
 
     if current_chunk != last_chunk.0 {
-        events.send(CurrentChunk(current_chunk));
+        events.write(CurrentChunk(current_chunk));
         last_chunk.0 = current_chunk;
     }
 }

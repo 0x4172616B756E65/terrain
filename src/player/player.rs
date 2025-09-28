@@ -1,8 +1,7 @@
 use bevy::prelude::*;
-use bevy_rapier3d::{prelude::*, rapier::prelude::PhysicsHooks};
+use bevy_rapier3d::prelude::*;
 
-use crate::player::{camera::{update_camera_controller, CameraController}, player_input::{apply_movement, handle_player_input}, player_state::PlayerState};
-use crate::player::player_state::PlayerAction::*;
+use crate::player::{camera::{update_camera_controller, CameraController}, player_input::{apply_movement, handle_player_input}, state::player_state::PlayerState};
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
@@ -47,20 +46,6 @@ impl Default for Player {
 }
 
 fn spawn_player(mut commands: Commands) {
-    let mut player = Player::default();
-    player.state = PlayerState { 
-        fov: 100., 
-        keymap: [
-            (KeyCode::KeyH, MOVE_FORWARDS),
-            (KeyCode::KeyS, MOVE_LEFTWARDS),
-            (KeyCode::KeyM, MOVE_BACKWARDS),
-            (KeyCode::KeyT, MOVE_RIGHTWARDS),
-            (KeyCode::KeyA, MOVE_SPRINTING),
-
-            (KeyCode::KeyG, INTERACT_GENERIC),
-        ].iter().cloned().collect(),
-    };
-    debug!("プレーヤーモヅルはロード済み");
     let camera_entity = commands.spawn((
         Camera3d::default(), 
         Transform::from_xyz(0., 0., 0.),

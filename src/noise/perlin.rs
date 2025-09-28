@@ -2,7 +2,6 @@ use std::u64;
 
 use bevy::{ecs::resource::Resource, math::ops::floor};
 use rand::{self, rngs::StdRng, seq::SliceRandom, SeedableRng};
-use tracing::info;
 
 const VECTORS: [Vector; 8] = [
     Vector { x: 1.0, y: 0.0 },

@@ -1,26 +1,58 @@
-use bevy::{prelude::*, render::camera::CameraProjection};
+use bevy::{input::mouse::MouseWheel, prelude::*};
 use bevy_rapier3d::prelude::{KinematicCharacterController, KinematicCharacterControllerOutput};
 
-use crate::player::{camera::CameraController, player::Player, player_state::{PlayerAction::*, PlayerState}};
+use crate::{player::{camera::CameraController, player::Player, state::player_state::{InputBinding, PlayerAction::{self, *}}}, terrain::chunks::RenderDistance};
 
-pub fn handle_player_input(mut player_query: Query<&mut Player>, keys: Res<ButtonInput<KeyCode>>) {
+pub fn handle_player_input(
+    mut player_query: Query<&mut Player>, 
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse_buttons: Res<ButtonInput<MouseButton>>,
+    mut scroll_events: EventReader<MouseWheel>,
+    mut render_distance: ResMut<RenderDistance>,
+) {
     let mut player = player_query.single_mut().unwrap();
+    let keymap = player.state.keymap.clone();
     player.direction = Vec3::ZERO;
     player.speed_multiplier = 1.0;
 
+    let mut apply_action = |action: PlayerAction| {
+        match action {
+            MoveForwards => player.direction.x += 1.,
+            MoveBackwards => player.direction.x -= 1.,
+            MoveRightwards => player.direction.z += 1.,
+            MoveLeftwards => player.direction.z -= 1.,
+
+            FlyUpwards => player.direction.y += 1.,
+            FlyDownwards => player.direction.y -= 1.,
+
+            MoveSprinting => player.speed_multiplier = 2.0,
+
+            DebugIncreaseRenderDistance => render_distance.0 += 1,
+            DebugDecreaseRenderDistance => render_distance.0 -= 1,
+            _ => {}
+        }
+    };
+
     for pressed_key in keys.get_pressed() {
-        if let Some(input) = player.state.keymap.get(pressed_key) {
-            match input {
-                MOVE_FORWARDS => player.direction.x += 1.,
-                MOVE_BACKWARDS => player.direction.x -= 1.,
-                MOVE_RIGHTWARDS => player.direction.z += 1.,
-                MOVE_LEFTWARDS => player.direction.z -= 1.,
+        if let Some(action) = keymap.get(&InputBinding::Key((*pressed_key).into())) {
+            apply_action(*action);
+        }
+    }
 
-                FLY_UPWARDS => player.direction.y += 1.,
-                FLY_DOWNWARDS => player.direction.y -= 1.,
+    for pressed_button in mouse_buttons.get_pressed() {
+        if let Some(action) = keymap.get(&InputBinding::MouseButton((*pressed_button).into())) {
+            apply_action(*action);
+        }
+    }
 
-                MOVE_SPRINTING => player.speed_multiplier = 2_f32,
-                _ => {}
+    for ev in scroll_events.read() {
+        if ev.y > 0.0 {
+            if let Some(action) = keymap.get(&InputBinding::MouseWheelUp) {
+                apply_action(*action);
+            }
+        } else if ev.y < 0.0 {
+            if let Some(action) = keymap.get(&InputBinding::MouseWheelDown) {
+                apply_action(*action);
             }
         }
     }

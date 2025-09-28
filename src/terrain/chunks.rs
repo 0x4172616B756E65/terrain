@@ -1,12 +1,14 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap};
 
-use bevy::{asset::RenderAssetUsages, ecs::resource::Resource, math::Vec3, render::mesh::{Indices, Mesh, PrimitiveTopology}};
-use bevy_rapier3d::{na::{DMatrix, Vector3}, prelude::Collider};
+use bevy::{asset::RenderAssetUsages, ecs::resource::Resource, render::mesh::{Indices, Mesh, PrimitiveTopology}};
 
 use crate::noise::perlin::Perlin;
 
 #[derive(Resource, Debug)]
 pub struct Chunkbase(HashMap<(i32, i32), Chunk>);
+
+#[derive(Resource, Default)]
+pub struct RenderDistance(pub i32);
 
 impl Chunkbase { 
     pub fn new(height: i32, width: i32, perlin: &Perlin) -> Self { 

@@ -1,11 +1,12 @@
-use bevy::{color::palettes::css::{GRAY, WHITE}, ecs::error::info, log::tracing_subscriber, pbr::light_consts::lux::OVERCAST_DAY};
+use bevy::{color::palettes::css::{GRAY, WHITE}, log::tracing_subscriber, pbr::light_consts::lux::OVERCAST_DAY};
 use bevy::prelude::*;
 use bevy_rapier3d::{plugin::{NoUserData, RapierPhysicsPlugin}, prelude::{Collider, KinematicCharacterController}, render::RapierDebugRenderPlugin};
 use sysinfo::System;
-use terrain::{noise::perlin::Perlin, player::{cursor::CursorPlugin, player::{Player, PlayerPlugin}}, terrain::{chunks::{Chunk, Chunkbase}, grid::{CurrentChunk, GridPlugin}}};
+use terrain::{noise::perlin::Perlin, player::{cursor::CursorPlugin, player::{Player, PlayerPlugin}}, terrain::{chunks::{Chunkbase, RenderDistance}, grid::{ChunkRadius, CurrentChunk, GridPlugin}}};
 
 #[derive(Component)]
 struct CustomUV;
+
 
 
 
@@ -16,6 +17,8 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugins(PlayerPlugin)
         .add_plugins(GridPlugin)
+        .insert_resource(ChunkRadius::default())
+        .insert_resource(RenderDistance::default())
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugins(RapierDebugRenderPlugin::default())
         .add_plugins(CursorPlugin)
@@ -27,17 +30,18 @@ fn main() {
 
 
 fn init_resources(mut commands: Commands) {
-    let perlin = Perlin::new(1, 0.1, 4, 2., 0.5);
-    let chunkbase: Chunkbase = Chunkbase::new_with_mesh(32, 32, &perlin, true);
+    let perlin = Perlin::new(1, 0.08, 4, 2., 0.5);
+    let chunkbase: Chunkbase = Chunkbase::new_with_mesh(64, 64, &perlin, true);
 
     commands.spawn(Collider::cuboid(1000., 0., 1000.));
     commands.insert_resource(perlin);
     commands.insert_resource(chunkbase);
 }
 
-//TODO init perlin as res
-fn load_chunks(
+fn load_chunks (
     chunkbase: Res<Chunkbase>,
+    render_distance: Res<RenderDistance>,
+    mut chunk_radius: ResMut<ChunkRadius>,
     mut materials: ResMut<Assets<StandardMaterial>>, 
     mut meshes: ResMut<Assets<Mesh>>,
     mut events: EventReader<CurrentChunk>, 
@@ -49,19 +53,23 @@ fn load_chunks(
         ..default()
     });
 
-    let mut mesh_handles = Vec::new();
-
     for CurrentChunk((chunk_x, chunk_y)) in events.read() {
-        for chunk in chunkbase.load_chunks(*chunk_x, *chunk_y, 4) {
-            mesh_handles.push(meshes.add(chunk.get_mesh().as_ref().unwrap().clone()));
+        for chunk in chunk_radius.0.drain(..) {
+            commands.entity(chunk).despawn();
         }
 
-        for handle in &mesh_handles {
-            commands.spawn((
+        let mut chunk_handles = Vec::new();
+
+        for chunk in chunkbase.load_chunks(*chunk_x, *chunk_y, render_distance.0) {
+            chunk_handles.push(meshes.add(chunk.get_mesh().as_ref().unwrap().clone()));
+        }
+
+        for handle in &chunk_handles {
+            chunk_radius.0.push(commands.spawn((
                 Mesh3d(handle.clone()),
                 MeshMaterial3d(stone.clone()),        
                 CustomUV,
-            ));
+            )).id());
         }
     }
 }
@@ -95,8 +103,8 @@ fn setup_scene(mut commands: Commands) {
 }
 
 
-fn debug(mut text_query: Query<&mut Text>, player_query: Query<(&Player, &Transform, &KinematicCharacterController)>, mut sys: Local<System>, mut events: EventReader<CurrentChunk>) {
-    let (player, transform, controller) = player_query.single().unwrap();
+fn debug(mut text_query: Query<&mut Text>, player_query: Query<(&Player, &Transform, &KinematicCharacterController)>, mut sys: Local<System>) {
+    let (player, transform, _) = player_query.single().unwrap();
     let x = transform.translation.x;
     let y = transform.translation.y;
     let z = transform.translation.z;
@@ -105,15 +113,11 @@ fn debug(mut text_query: Query<&mut Text>, player_query: Query<(&Player, &Transf
     sys.refresh_memory();
     let used = sys.used_memory() / 1024;
 
-    for CurrentChunk((chunk_x, chunk_y)) in events.read() {
-        let chunk = format!("Entered chunk {chunk_x}, {chunk_y}");
 
     text.clear();
     text.push_str(&format!("
         X: {x} Y: {y} Z: {z}\n
         RAM: {:?}\n
-        {:?}\n
-        {chunk}",
+        {:?}\n",
     used, player.momentum));
-    }
 }
