@@ -1,14 +1,12 @@
-use bevy::{color::palettes::css::{GRAY, WHITE}, log::tracing_subscriber, pbr::light_consts::lux::OVERCAST_DAY};
+use bevy::{color::palettes::css::{GRAY, WHITE}, diagnostic::{Diagnostic, Diagnostics, DiagnosticsStore, FrameTimeDiagnosticsPlugin}, log::tracing_subscriber, pbr::light_consts::lux::OVERCAST_DAY};
 use bevy::prelude::*;
 use bevy_rapier3d::{plugin::{NoUserData, RapierPhysicsPlugin}, prelude::{Collider, KinematicCharacterController}, render::RapierDebugRenderPlugin};
 use sysinfo::System;
-use terrain::{noise::perlin::Perlin, player::{cursor::CursorPlugin, player::{Player, PlayerPlugin}}, terrain::{chunks::{Chunkbase, RenderDistance}, grid::{ChunkRadius, CurrentChunk, GridPlugin}}};
+use terrain::{noise::perlin::Perlin, player::{self, cursor::CursorPlugin, player::{Player, PlayerPlugin}}, terrain::{chunks::{Chunk, Chunkbase, RenderDistance, RenderedChunks}, grid::{ChunkRadius, CurrentChunk, GridPlugin}}};
+use std::collections::HashSet;
 
 #[derive(Component)]
 struct CustomUV;
-
-
-
 
 fn main() {
     tracing_subscriber::fmt().init();
@@ -17,8 +15,11 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugins(PlayerPlugin)
         .add_plugins(GridPlugin)
+        .add_plugins(FrameTimeDiagnosticsPlugin::default()) 
         .insert_resource(ChunkRadius::default())
         .insert_resource(RenderDistance::default())
+        .insert_resource(RenderedChunks::default())
+        .insert_resource(PreviousRadius::default())
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugins(RapierDebugRenderPlugin::default())
         .add_plugins(CursorPlugin)
@@ -27,7 +28,8 @@ fn main() {
         .run();
 }
 
-
+#[derive(Resource, Default)]
+struct PreviousRadius(pub HashSet<(i32, i32)>);
 
 fn init_resources(mut commands: Commands) {
     let perlin = Perlin::new(1, 0.08, 4, 2., 0.5);
@@ -38,65 +40,93 @@ fn init_resources(mut commands: Commands) {
     commands.insert_resource(chunkbase);
 }
 
-fn load_chunks (
+fn load_chunks(
     chunkbase: Res<Chunkbase>,
     render_distance: Res<RenderDistance>,
-    mut player: Query<&mut Player>,
-    mut chunk_radius: ResMut<ChunkRadius>,
-    mut materials: ResMut<Assets<StandardMaterial>>, 
+    mut player_query: Query<&mut Player>,
+    mut commands: Commands,
+    mut previous_radius: ResMut<PreviousRadius>,
+    mut rendered_chunks: ResMut<RenderedChunks>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut events: EventReader<CurrentChunk>, 
-    mut commands: Commands
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut events: EventReader<CurrentChunk>,
 ) {
-    let mut player = player.single_mut().unwrap();
-    let stone = materials.add(StandardMaterial {
-        base_color: GRAY.into(),
-        perceptual_roughness: 0.5,
-        ..default()
-    });
+    let mut player = player_query.single_mut().unwrap();
+    let stone = materials.add(StandardMaterial { base_color: GRAY.into(), perceptual_roughness: 0.5, ..default() });
+    
+    for CurrentChunk((cx, cy)) in events.read() {
+        let load_raw: HashSet<(i32, i32)> =
+            get_radius(*cx, *cy, render_distance.0).iter().cloned().collect();
 
-    for CurrentChunk((chunk_x, chunk_y)) in events.read() {
-        player.current_chunk = CurrentChunk((*chunk_x, *chunk_y));
-        for chunk in chunk_radius.0.drain(..) {
-            commands.entity(chunk).despawn();
+        for coord in previous_radius.0.difference(&load_raw) {
+            if let Some(entity) = rendered_chunks.0.remove(coord) {
+                commands.entity(entity).despawn();
+            }
         }
 
-        let mut chunk_handles = Vec::new();
+        for coord in load_raw.difference(&previous_radius.0) {
+            if let Some(chunk) = chunkbase.load_chunk(coord) {
+                let handle = meshes.add(chunk.get_mesh().as_ref().unwrap().clone());
 
-        for chunk in chunkbase.load_chunks(*chunk_x, *chunk_y, render_distance.0) {
-            chunk_handles.push(meshes.add(chunk.get_mesh().as_ref().unwrap().clone()));
+                let entity = commands.spawn((
+                    Mesh3d(handle),
+                    MeshMaterial3d(stone.clone()),
+                    CustomUV,
+                )).id();
+
+                rendered_chunks.0.insert(*coord, entity);
+            }
         }
 
-        for handle in &chunk_handles {
-            chunk_radius.0.push(commands.spawn((
-                Mesh3d(handle.clone()),
-                MeshMaterial3d(stone.clone()),        
-                CustomUV,
-            )).id());
-        }
+        previous_radius.0 = load_raw;
+        player.current_chunk = CurrentChunk((*cx, *cy));
     }
 
     if render_distance.is_changed() {
-        let (chunk_x, chunk_y) = player.current_chunk.0;
-        for chunk in chunk_radius.0.drain(..) {
-            commands.entity(chunk).despawn();
+        let (cx, cy) = player.current_chunk.0;
+        let load_raw: HashSet<(i32, i32)> = 
+            get_radius(cx, cy, render_distance.0).iter().cloned().collect();
+
+        for coord in previous_radius.0.difference(&load_raw) {
+            if let Some(entity) = rendered_chunks.0.remove(coord) {
+                commands.entity(entity).despawn();
+            }
         }
 
-        let mut chunk_handles = Vec::new();
+        for coord in load_raw.difference(&previous_radius.0) {
+            if let Some(chunk) = chunkbase.load_chunk(coord) {
+                let handle = meshes.add(chunk.get_mesh().as_ref().unwrap().clone());
 
-        for chunk in chunkbase.load_chunks(chunk_x, chunk_y, render_distance.0) {
-            chunk_handles.push(meshes.add(chunk.get_mesh().as_ref().unwrap().clone()));
+                let entity = commands.spawn((
+                    Mesh3d(handle),
+                    MeshMaterial3d(stone.clone()),
+                    CustomUV,
+                )).id();
+
+                rendered_chunks.0.insert(*coord, entity);
+            }
         }
 
-        for handle in &chunk_handles {
-            chunk_radius.0.push(commands.spawn((
-                Mesh3d(handle.clone()),
-                MeshMaterial3d(stone.clone()),        
-                CustomUV,
-            )).id());
-        }
+        previous_radius.0 = load_raw;
     }
 }
+
+pub fn get_radius(cx: i32, cy: i32, radius: i32) -> Vec<(i32, i32)> {
+        let mut chunks = Vec::with_capacity((radius * 2 + 1).pow(2) as usize);
+        let radius_sq = radius * radius;
+
+        for y in -radius..=radius {
+            let y_sq = y * y;
+            for x in -radius..=radius {
+                if x * x + y_sq <= radius_sq {
+                    let chunk_coords = (cx.wrapping_add(x), cy.wrapping_add(y));
+                        chunks.push(chunk_coords);
+                }
+            }
+        }
+
+        chunks
+    }
 
 fn setup_scene(mut commands: Commands) {
     let light_transform = Transform::from_xyz(128., 64., 128.).looking_at(Vec3::new(128., 0., 128.), Vec3::Y);
@@ -127,21 +157,24 @@ fn setup_scene(mut commands: Commands) {
 }
 
 
-fn debug(mut text_query: Query<&mut Text>, player_query: Query<(&Player, &Transform, &KinematicCharacterController)>, mut sys: Local<System>) {
-    let (player, transform, _) = player_query.single().unwrap();
+fn debug(
+    player_query: Query<(&Player, &Transform, &KinematicCharacterController)>, 
+    chunks: Res<RenderedChunks>,
+    diagnostics: Res<DiagnosticsStore>,
+    mut text_query: Query<&mut Text>,
+) {
+    let (_, transform, _) = player_query.single().unwrap();
     let x = transform.translation.x;
     let y = transform.translation.y;
     let z = transform.translation.z;
 
     let mut text = text_query.single_mut().unwrap();
-    sys.refresh_memory();
-    let used = sys.used_memory() / 1024;
-
+    let fps = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS).and_then(|d| d.average()).unwrap_or_default();
 
     text.clear();
     text.push_str(&format!("
         X: {x} Y: {y} Z: {z}\n
-        RAM: {:?}\n
-        {:?}\n",
-    used, player.momentum));
+        FPS: {fps}
+        Current chunks: {:?}\n",
+    chunks.0.len()));
 }

@@ -1,6 +1,6 @@
 use std::{collections::HashMap};
 
-use bevy::{asset::RenderAssetUsages, ecs::resource::Resource, render::mesh::{Indices, Mesh, PrimitiveTopology}};
+use bevy::{asset::RenderAssetUsages, ecs::{entity::Entity, resource::Resource}, render::mesh::{Indices, Mesh, PrimitiveTopology}};
 
 use crate::noise::perlin::Perlin;
 
@@ -8,7 +8,11 @@ use crate::noise::perlin::Perlin;
 pub struct Chunkbase(HashMap<(i32, i32), Chunk>);
 
 #[derive(Resource, Default)]
+pub struct RenderedChunks(pub HashMap<(i32, i32), Entity>);
+
+#[derive(Resource, Default)]
 pub struct RenderDistance(pub i32);
+
 
 impl Chunkbase { 
     pub fn new(height: i32, width: i32, perlin: &Perlin) -> Self { 
@@ -36,6 +40,10 @@ impl Chunkbase {
         Chunkbase(chunks)
     }
 
+    pub fn load_chunk(&self, coordinates: &(i32, i32)) -> Option<&Chunk> {
+        self.0.get(coordinates)
+    }
+
     pub fn load_chunks(&self, cx: i32, cy: i32, radius: i32) -> Vec<&Chunk> {
         let mut chunks = Vec::with_capacity((radius * 2 + 1).pow(2) as usize);
         let radius_sq = radius * radius;
@@ -52,6 +60,12 @@ impl Chunkbase {
             }
         }
 
+        chunks
+    }
+
+    pub fn load_chunks_from_map(&self, map: Vec<(i32, i32)>) -> Vec<&Chunk> {
+        let mut chunks = Vec::with_capacity(map.len());
+        for coords in map { if let Some(chunk) = self.0.get(&coords) { chunks.push(chunk); } }
         chunks
     }
 }
