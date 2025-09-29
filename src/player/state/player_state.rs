@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::player::state::{player_state::PlayerAction::*, serde_keyboard::SerdeKeyCode, serde_mouse::SerdeMouseCode};
-use bevy::input::{keyboard::KeyCode::*};
+use bevy::input::{keyboard::KeyCode::*, mouse::MouseButton::*};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -26,6 +26,7 @@ impl Default for PlayerState {
 
                 (InputBinding::Key(KeyW.into()), InteractGeneric),
 
+                (InputBinding::MouseButton(Left.into()), DebugShootBullet),
                 (InputBinding::MouseWheelUp, DebugIncreaseRenderDistance),
                 (InputBinding::MouseWheelDown, DebugDecreaseRenderDistance)
 
@@ -62,6 +63,7 @@ pub enum PlayerAction {
     WeaponAction2,
     WeaponAction3,
 
+    DebugShootBullet,
     DebugIncreaseRenderDistance,
     DebugDecreaseRenderDistance,
 }

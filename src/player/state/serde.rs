@@ -4,7 +4,7 @@ use bevy::ecs::system::Query;
 
 use crate::player::{player::Player, state::player_state::PlayerState};
 
-fn read_player_state() -> PlayerState {
+fn _read_player_state() -> PlayerState {
     let mut path = PathBuf::from(env::var("HOME").unwrap());
         path.push(".local/share/player_config.json");
 
@@ -14,7 +14,7 @@ fn read_player_state() -> PlayerState {
     serde_json::from_reader(file_reader).unwrap()
 }
 
-fn write_player_state(player_query: Query<&Player>) {
+fn _write_player_state(player_query: Query<&Player>) {
     let mut path = PathBuf::from(env::var("HOME").unwrap());
         path.push(".local/share/player_config.json");
 

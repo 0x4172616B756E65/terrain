@@ -1,16 +1,29 @@
 use bevy::{input::mouse::MouseWheel, prelude::*};
 use bevy_rapier3d::prelude::{KinematicCharacterController, KinematicCharacterControllerOutput};
 
-use crate::{player::{camera::CameraController, player::Player, state::player_state::{InputBinding, PlayerAction::{self, *}}}, terrain::chunks::RenderDistance};
+use crate::{player::{camera_controller::CameraController, player::Player, player_attack::DebugShootEvent, state::player_state::{InputBinding, PlayerAction::{self, *}}}, terrain::chunks::RenderDistance};
 
 pub fn handle_player_input(
-    mut player_query: Query<&mut Player>, 
+    mut player_query: Query<(&mut Player, &Transform)>, 
+    camera_query: Query<&CameraController>,
     keys: Res<ButtonInput<KeyCode>>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     mut scroll_events: EventReader<MouseWheel>,
     mut render_distance: ResMut<RenderDistance>,
+    mut debug_shoot: EventWriter<DebugShootEvent>
 ) {
-    let mut player = player_query.single_mut().unwrap();
+    let (mut player, transform) = player_query.single_mut().unwrap();
+    let camera = camera_query.single().unwrap();
+
+    let yaw = -camera.rotation.y.to_radians() - 90.0_f32.to_radians();
+    let pitch = camera.rotation.x.to_radians();
+
+    let forwards = Vec3::new(
+        pitch.cos() * yaw.cos(),
+        pitch.sin(),
+        pitch.cos() * yaw.sin(),
+    );
+
     let keymap = player.state.keymap.clone();
     player.direction = Vec3::ZERO;
     player.speed_multiplier = 1.0;
@@ -27,6 +40,8 @@ pub fn handle_player_input(
 
             MoveSprinting => player.speed_multiplier = 2.0,
 
+            DebugShootBullet => { let _ = debug_shoot.write(DebugShootEvent((*transform, forwards))); }, 
+
             DebugIncreaseRenderDistance => render_distance.0 += 1,
             DebugDecreaseRenderDistance => render_distance.0 -= 1,
             _ => {}
@@ -39,9 +54,11 @@ pub fn handle_player_input(
         }
     }
 
-    for pressed_button in mouse_buttons.get_pressed() {
-        if let Some(action) = keymap.get(&InputBinding::MouseButton((*pressed_button).into())) {
-            apply_action(*action);
+    for pressed_button in [MouseButton::Left, MouseButton::Right] {
+        if mouse_buttons.just_pressed(pressed_button) {
+            if let Some(action) = keymap.get(&InputBinding::MouseButton(pressed_button.into())) {
+                apply_action(*action);
+            }
         }
     }
 

@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
-use crate::{player::{camera::{update_camera_controller, CameraController}, player_input::{apply_movement, handle_player_input}, state::player_state::PlayerState}, terrain::grid::CurrentChunk};
+use crate::{player::{camera_controller::{update_camera_controller, CameraController}, player_attack::debug_shoot_bullet, player_input::{apply_movement, handle_player_input}, state::player_state::PlayerState}, terrain::grid::CurrentChunk};
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
@@ -9,7 +9,7 @@ impl Plugin for PlayerPlugin {
         app
             .add_systems(Startup, spawn_player)
             .add_systems(FixedUpdate, apply_movement.in_set(PhysicsSet::Writeback))
-            .add_systems(Update, (update_camera_controller, handle_player_input));
+            .add_systems(Update, (update_camera_controller, handle_player_input, debug_shoot_bullet));
     }
 }
 
@@ -51,6 +51,10 @@ fn spawn_player(mut commands: Commands) {
     let camera_entity = commands.spawn((
         Camera3d::default(), 
         Transform::from_xyz(0., 0., 0.),
+        Projection::from(PerspectiveProjection {
+            fov: 120_f32,
+            ..default()
+        }),
         CameraController {
             sensitivity: 0.030,
             rotation: Vec2::ZERO,

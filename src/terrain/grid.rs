@@ -25,11 +25,11 @@ impl Plugin for GridPlugin {
 }
 
 fn enter_chunk_event(
+    player_query: Query<(&Player, &Transform)>,
     mut last_chunk: ResMut<LastChunk>,
-    player_query: Query<&Transform, With<Player>>,
     mut events: EventWriter<CurrentChunk>
 ) {
-    let transform = player_query.single().unwrap();
+    let (_, transform) = player_query.single().unwrap();
     let current_chunk = (
         (transform.translation.x / 32.0).floor() as i32,
         (transform.translation.z / 32.0).floor() as i32,
