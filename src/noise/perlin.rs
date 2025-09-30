@@ -1,7 +1,10 @@
-use std::u64;
+#[cfg(feature = "debug")]
+use std::time::Instant;
 
 use bevy::{ecs::resource::Resource, math::ops::floor};
 use rand::{self, rngs::StdRng, seq::SliceRandom, SeedableRng};
+#[cfg(feature = "debug")]
+use tracing::info;
 
 const VECTORS: [Vector; 8] = [
     Vector { x: 1.0, y: 0.0 },
@@ -50,6 +53,9 @@ impl std::fmt::Display for Vector {
 
 impl Perlin {
     pub fn new(seed: u64, scale: f32, octaves: usize, lacunarity: f32, persistence: f32) -> Self {
+        #[cfg(feature = "debug")]
+        let start = Instant::now();
+
         let mut table_256: [u8; 256] = (0..=255u8).collect::<Vec<u8>>().try_into().unwrap();
         let mut rng = StdRng::seed_from_u64(seed);
         table_256.shuffle(&mut rng);
@@ -57,6 +63,9 @@ impl Perlin {
         let mut table_512 = [0u8; 512];
         table_512[..256].copy_from_slice(&table_256);
         table_512[256..].copy_from_slice(&table_256);
+
+        #[cfg(feature = "debug")]
+        info!("Table finished in {:?}", start.elapsed());
 
         Perlin { seed: table_512, scale, octaves, lacunarity, persistence }
     }

@@ -1,6 +1,7 @@
 use std::{collections::HashMap};
 
 use bevy::{asset::RenderAssetUsages, ecs::{entity::Entity, resource::Resource}, render::mesh::{Indices, Mesh, PrimitiveTopology}};
+use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator};
 
 use crate::noise::perlin::Perlin;
 
@@ -26,17 +27,19 @@ impl Chunkbase {
     }
 
     pub fn new_with_mesh(height: i32, width: i32, perlin: &Perlin, normals: bool) -> Self { 
-        let mut chunks = HashMap::new();
-        for y in 0..height {
-            for x in 0..width {
+        let chunks: HashMap<(i32, i32), Chunk> = (0..height)
+            .into_par_iter()
+            .flat_map(|y| (0..width).map(move |x| (x, y)).par_bridge())
+            .map(|(x, y)| {
                 let mut chunk = Chunk::new(x, y, perlin);
-                match normals {
-                    true => chunk.generate_mesh_with_normals(),
-                    false => chunk.generate_mesh()
-                };
-                chunks.insert((x, y), chunk);
-            }
-        }
+                if normals {
+                    chunk.generate_mesh_with_normals();
+                } else {
+                    chunk.generate_mesh();
+                }
+                ((x, y), chunk)
+            }).collect();
+             
         Chunkbase(chunks)
     }
 
@@ -59,6 +62,15 @@ impl Chunkbase {
                 }
             }
         }
+
+        /* WIP parallelization of chunk loading
+        let chunks: Vec<&Chunk> = (-radius..=radius)
+            .into_par_iter()
+            .flat_map(|y| (-radius..=radius).filter_map(move |x| { if x * x + y * y <= radius * radius {(x, y)}}).par_bridge())
+            .map(|(x, y)| {
+                let chunk_coords = (cx.wrapping_add(x), cy.wrapping_add(y));
+                if let Some(chunk) = self.0.get(&chunk_coords) { chunk }
+            }).collect();*/
 
         chunks
     }

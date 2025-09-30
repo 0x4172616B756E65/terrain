@@ -1,4 +1,6 @@
 use std::collections::HashSet;
+#[cfg(feature = "debug")]
+use std::time::Instant;
 
 use bevy::{app::Plugin, color::palettes::tailwind::GREEN_200, pbr::light_consts::lux::OVERCAST_DAY, prelude::*};
 use bevy_rapier3d::prelude::Collider;
@@ -28,7 +30,12 @@ struct PreviousRadius(pub HashSet<(i32, i32)>);
 struct CustomUV;
 
 fn init_resources(mut commands: Commands, perlin: Res<Perlin>) {
+    #[cfg(feature = "debug")]
+    let start = Instant::now();
     let chunkbase: Chunkbase = Chunkbase::new_with_mesh(256, 256, &perlin, true);
+
+    #[cfg(feature = "debug")]
+    info!("Time to load chunkbase: {:?}\n Current chunks: 65536", start.elapsed());
 
     commands.spawn(Collider::cuboid(8192., 0., 8192.));
     commands.insert_resource(chunkbase);
