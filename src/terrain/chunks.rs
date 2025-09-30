@@ -10,7 +10,7 @@ pub struct Chunkbase(HashMap<(i32, i32), Chunk>);
 #[derive(Resource, Default)]
 pub struct RenderedChunks(pub HashMap<(i32, i32), Entity>);
 
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct RenderDistance(pub i32);
 
 

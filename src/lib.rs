@@ -1,3 +1,5 @@
+pub mod init;
+
 pub mod noise {
     pub mod perlin;
     pub mod poisson_disc;

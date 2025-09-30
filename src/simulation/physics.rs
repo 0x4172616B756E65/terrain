@@ -18,8 +18,15 @@ impl Plugin for BallisticsPlugin {
     }
 }
 
+#[derive(Resource)]
 pub struct WorldState {
     temperature: f32, 
+}
+
+impl Default for WorldState {
+    fn default() -> Self {
+        WorldState { temperature: 20. }
+    }
 }
 
 impl WorldState {

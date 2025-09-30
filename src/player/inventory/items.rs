@@ -1,4 +1,4 @@
-pub enum ItemKind {
+pub enum Item {
     MeleeWeapon(MeleeWeaponItem),
     RangedWeapon(RangedWeaponItem),
     //Clothing(ClothingItem),
@@ -60,13 +60,6 @@ pub enum RangedWeaponKind {
     HighRangeSniperRifle,
     AntiMaterielSniperRifle,
 }
-
-pub struct Item {
-    pub kind: ItemKind,
-    pub use_time: f32, //Seconds it takes to use the item
-    pub traits: Vec<ItemTrait>,
-}
-
 
 pub enum ItemTrait {
     Equipable,

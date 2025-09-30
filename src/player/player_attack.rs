@@ -15,13 +15,13 @@ pub struct TimedAction {
 
 pub fn debug_shoot_bullet(
     time: Res<Time>, 
+    world_state: Res<WorldState>,
     mut events: EventReader<DebugShootEvent>, 
     mut commands: Commands,  
     mut meshes: ResMut<Assets<Mesh>>, 
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     for DebugShootEvent((transform, direction)) in events.read() {
-        let world_state = WorldState::new();
         let bullet = Bullet::new_nine_mm(*direction, 360., 8_900., &world_state, Vec3::new(transform.translation.x, transform.translation.y, transform.translation.z));
         info!("Bullet shot with velocity: {:?}, magnitude: {}", bullet.instant_velocity(), bullet.instant_velocity().length());
         let mesh = meshes.add(Sphere::new(0.4).mesh().ico(5).unwrap());

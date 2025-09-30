@@ -64,8 +64,8 @@ fn spawn_player(mut commands: Commands) {
 
     let player_entity = commands.spawn((
         Player::default(),
-        Transform::from_xyz(128., 32., 128.),
-        Collider::cuboid(1., 10., 1.),
+        Transform::from_xyz(4092., 32., 4092.),
+        Collider::cuboid(0.5, 1.8, 0.25),
         RigidBody::KinematicPositionBased,
         KinematicCharacterController {
             up: Vec3::Y,
