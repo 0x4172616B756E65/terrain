@@ -1,9 +1,13 @@
+#[cfg(feature = "debug")]
+use std::time::Instant;
 use std::{collections::HashMap};
 
-use bevy::{asset::RenderAssetUsages, ecs::{entity::Entity, resource::Resource}, render::mesh::{Indices, Mesh, PrimitiveTopology}};
+use bevy::{asset::RenderAssetUsages, ecs::{entity::Entity, resource::Resource}, render::mesh::{Indices, Mesh, PrimitiveTopology}, tasks::block_on};
 use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator};
+#[cfg(feature = "debug")]
+use tracing::info;
 
-use crate::noise::perlin::Perlin;
+use crate::noise::{perlin::Perlin, perlin_cpu::PerlinCPU};
 
 #[derive(Resource, Debug)]
 pub struct Chunkbase(HashMap<(i32, i32), Chunk>);
@@ -32,11 +36,10 @@ impl Chunkbase {
             .flat_map(|y| (0..width).map(move |x| (x, y)).par_bridge())
             .map(|(x, y)| {
                 let mut chunk = Chunk::new(x, y, perlin);
-                if normals {
-                    chunk.generate_mesh_with_normals();
-                } else {
-                    chunk.generate_mesh();
-                }
+                match normals {
+                    true => chunk.generate_mesh_with_normals(),
+                    false => chunk.generate_mesh()
+                };
                 ((x, y), chunk)
             }).collect();
              
@@ -91,6 +94,43 @@ pub struct Chunk {
 
 impl Chunk {
     pub fn new(chunk_x: i32, chunk_y: i32, perlin: &Perlin) -> Self {
+        #[cfg(feature = "debug")]
+        let start = Instant::now();
+        let heightmap = block_on(perlin.compute_from_fractal((32/8, 32/8, 1))).unwrap();
+
+        #[cfg(feature = "debug")]
+        info!("Thread locked for: {:?}", start.elapsed());
+
+        let mut vertex_buffer: Vec<[f32; 3]> = Vec::with_capacity(1024);  
+        let mut index_buffer: Vec<u32> = Vec::with_capacity(5766);
+
+        for y in 0..32 {
+            for x in 0..32 {
+                vertex_buffer.push([(x + chunk_x * 32) as f32, heightmap[(x + (32*y)) as usize], (y + chunk_y * 32) as f32]);
+            }
+        }
+
+        for y in 0..31 {
+            for x in 0..31 {
+                let i0 = x + y * 32;
+                let i1 = i0 + 1;
+                let i2 = i0 + 32;
+                let i3 = i2 + 1;
+
+                index_buffer.push(i0);
+                index_buffer.push(i3);
+                index_buffer.push(i1);
+
+                index_buffer.push(i0);
+                index_buffer.push(i2);
+                index_buffer.push(i3);
+            }
+        }
+
+        Chunk { vertex_buffer, index_buffer, mesh: None }
+
+    }
+    pub fn new_cpu(chunk_x: i32, chunk_y: i32, perlin: &PerlinCPU) -> Self {
         let mut vertex_buffer: Vec<[f32; 3]> = Vec::with_capacity(1024);  
         let mut index_buffer: Vec<u32> = Vec::with_capacity(5766);
 
@@ -152,40 +192,4 @@ impl Chunk {
     pub fn get_mesh(&self) -> &Option<Mesh> {
         &self.mesh 
     }
-}
-
-
-pub fn calculate_mesh(perlin: Perlin, width: u32, height: u32) -> (Vec<[f32; 3]>, Vec<u32>){
-    let mut vertices: Vec<[f32; 3]> = Vec::with_capacity((width * height) as usize);
-    let mut heightmap: Vec<f32> = Vec::with_capacity((width * height) as usize);
-    for y in 0..height {
-        for x in 0..width {
-            let fx = x as f32 * perlin.scale;
-            let fy = y as f32 * perlin.scale;
-            let z = (perlin.from_fractal(fx, fy) + 0.5).powi(4) * 10.;
-
-            vertices.push([x as f32, z, y as f32]);
-            heightmap.push(1_f32);
-        }
-    }
-
-    let mut indices = Vec::with_capacity(((width - 1) * (height - 1) * 6) as usize);
-    for y in 0..height - 1 {
-        for x in 0..width - 1 {
-            let i0 = x + y * width;
-            let i1 = i0 + 1;
-            let i2 = i0 + width;
-            let i3 = i2 + 1;
-
-            indices.push(i0);
-            indices.push(i3);
-            indices.push(i1);
-
-            indices.push(i0);
-            indices.push(i2);
-            indices.push(i3);
-        }
-    }
-
-    (vertices, indices)
 }

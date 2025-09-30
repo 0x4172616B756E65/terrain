@@ -2,7 +2,7 @@ use std::collections::HashSet;
 #[cfg(feature = "debug")]
 use std::time::Instant;
 
-use bevy::{app::Plugin, color::palettes::tailwind::GREEN_200, pbr::light_consts::lux::OVERCAST_DAY, prelude::*};
+use bevy::{app::Plugin, color::palettes::tailwind::GREEN_200, pbr::light_consts::lux::OVERCAST_DAY, prelude::*, tasks::{block_on, AsyncComputeTaskPool}};
 use bevy_rapier3d::prelude::Collider;
 
 use crate::{noise::perlin::Perlin, player::player::Player, simulation::physics::WorldState, terrain::{chunks::{Chunkbase, RenderDistance, RenderedChunks}, grid::{ChunkRadius, CurrentChunk}}};
@@ -16,8 +16,8 @@ impl Plugin for Init {
             .insert_resource(RenderDistance(16))
             .insert_resource(RenderedChunks::default())
             .insert_resource(PreviousRadius::default())
+            .insert_resource(block_on(Perlin::new(1)).unwrap())
             .insert_resource(WorldState::default())
-            .insert_resource(Perlin::new(1, 0.01, 4, 2., 0.5))
             .add_systems(Startup, (init_resources, setup_scene))
             .add_systems(Update, load_map);
     }
@@ -32,6 +32,17 @@ struct CustomUV;
 fn init_resources(mut commands: Commands, perlin: Res<Perlin>) {
     #[cfg(feature = "debug")]
     let start = Instant::now();
+
+    /* WIP: parallel loading perlin
+    let (sender, receiver) = futures_intrusive::channel::shared::oneshot_channel();
+
+    AsyncComputeTaskPool::get().spawn(async move {
+        let perlin = Perlin::new(1).unwrap();
+        sender.send(perlin).unwrap();
+    }).detach();
+    */
+    #[cfg(feature = "debug")]
+    info!("Thread blocked for {:?}", start.elapsed());
     let chunkbase: Chunkbase = Chunkbase::new_with_mesh(256, 256, &perlin, true);
 
     #[cfg(feature = "debug")]

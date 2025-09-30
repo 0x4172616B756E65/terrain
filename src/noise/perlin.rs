@@ -1,134 +1,197 @@
-#[cfg(feature = "debug")]
-use std::time::Instant;
+use bevy::{ecs::resource::Resource, math::Vec2};
+use wgpu::{util::{BufferInitDescriptor, DeviceExt}, wgt::PollType, BindGroup, Buffer, BufferDescriptor, BufferUsages, CommandEncoderDescriptor, ComputePassDescriptor, ComputePipeline, ComputePipelineDescriptor, Device, DeviceDescriptor, MapMode, PipelineCompilationOptions, Queue, WasmNotSend};
+use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 
-use bevy::{ecs::resource::Resource, math::ops::floor};
-use rand::{self, rngs::StdRng, seq::SliceRandom, SeedableRng};
-#[cfg(feature = "debug")]
-use tracing::info;
-
-const VECTORS: [Vector; 8] = [
-    Vector { x: 1.0, y: 0.0 },
-    Vector { x: 0.0, y: 1.0 },
-    Vector { x: -1.0, y: 0.0 },
-    Vector { x: 0.0, y: -1.0 },
-    Vector { x: 0.70710677, y: 0.70710677 },
-    Vector { x: -0.70710677, y: 0.70710677 },
-    Vector { x: 0.70710677, y: -0.70710677 },
-    Vector { x: -0.70710677, y: -0.70710677 },
-];
-
-#[derive(Debug, Clone, Copy, Resource)]
+#[derive(Debug, Clone, Resource)]
 pub struct Perlin {
-    pub seed: [u8; 512], 
-    pub scale: f32,
+    device: Device,
+    queue: Queue,
 
-    pub octaves: usize,
-    pub lacunarity: f32,
-    pub persistence: f32,
+    seed_buffer: Buffer,
+    vector_buffer: Buffer,
+    output_buffer: Buffer,
+    //readback_buffer: Buffer,
+
+    compute_pipeline: ComputePipeline,
+    bind_group: BindGroup
 }
-
-#[derive(Debug, Clone, Copy)]
-pub struct Vector {
-    pub x: f32,
-    pub y: f32
-}
-
-impl Vector {
-    pub fn new(x: f32, y: f32) -> Self {
-        Vector { x, y }
-    }
-   
-    #[inline]
-    pub fn dot(&self, other: Vector) -> f32 {
-        self.x * other.x + self.y * other.y
-    }
-}
-
-impl std::fmt::Display for Vector {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "({}, {})", self.x, self.y)
-    }
-}
-
 
 impl Perlin {
-    pub fn new(seed: u64, scale: f32, octaves: usize, lacunarity: f32, persistence: f32) -> Self {
-        #[cfg(feature = "debug")]
-        let start = Instant::now();
+    pub async fn new(seed: u64) -> anyhow::Result<Self> {
+        let instance = wgpu::Instance::default();
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            }).await.unwrap();
 
-        let mut table_256: [u8; 256] = (0..=255u8).collect::<Vec<u8>>().try_into().unwrap();
+        let (device, queue) = adapter.request_device(&DeviceDescriptor::default()).await.unwrap();
+
+        let mut table_256: [u32; 256] = (0..=255).collect::<Vec<u32>>().try_into().unwrap();
         let mut rng = StdRng::seed_from_u64(seed);
         table_256.shuffle(&mut rng);
 
-        let mut table_512 = [0u8; 512];
-        table_512[..256].copy_from_slice(&table_256);
-        table_512[256..].copy_from_slice(&table_256);
+        let table_512: [u32; 512] = {
+            let mut arr = [0u32; 512];
+            arr[..256].copy_from_slice(&table_256);
+            arr[256..].copy_from_slice(&table_256);
+            arr
+        };
 
-        #[cfg(feature = "debug")]
-        info!("Table finished in {:?}", start.elapsed());
+        let vectors_data: [Vec2; 8] = [
+            Vec2::new(1.0,0.0), Vec2::new(-1.0,0.0),
+            Vec2::new(0.0,1.0), Vec2::new(0.0,-1.0),
+            Vec2::new(1.0,1.0), Vec2::new(-1.0,1.0),
+            Vec2::new(1.0,-1.0), Vec2::new(-1.0,-1.0),
+        ];
 
-        Perlin { seed: table_512, scale, octaves, lacunarity, persistence }
+        let seed_buffer = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("SeedBuffer"),
+            contents: bytemuck::cast_slice(&table_512),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+
+        let vector_buffer = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("VectorBuffer"),
+            contents: bytemuck::cast_slice(&vectors_data),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+
+        let output_buffer = device.create_buffer(&BufferDescriptor {
+            label: Some("OutputBuffer"),
+            size: 32*32*std::mem::size_of::<f32>() as u64,
+            usage: BufferUsages::STORAGE | BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+
+        /*        
+        let readback_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("ReadbackBuffer"),
+            size: 32*32*std::mem::size_of::<f32>() as u64,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        */
+
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("from_point"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("perlin.wgsl").into()),
+        });
+
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("BindGroupLayout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("BindGroup"),
+            layout: &bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: seed_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: vector_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: output_buffer.as_entire_binding() },
+            ],
+        });
+
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("PipelineLayout"),
+            bind_group_layouts: &[&bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        let compute_pipeline = device.create_compute_pipeline(&ComputePipelineDescriptor {
+            label: Some("ComputePipeline"),
+            layout: Some(&pipeline_layout),
+            module: &shader,
+            entry_point: Some("main"),
+            compilation_options: PipelineCompilationOptions::default(),
+            cache: None
+        });
+
+        Ok(Self {
+            device,
+            queue,
+            seed_buffer,
+            vector_buffer,
+            output_buffer,
+            //readback_buffer,
+            compute_pipeline,
+            bind_group,
+        })
     }
 
-    pub fn from_point(&self, x: usize, y: usize) -> Vector {
-        let index = self.seed[(self.seed[x % 256] as usize + y % 256) % 256] % VECTORS.len() as u8; 
-        VECTORS[index as usize]
-    }
+    //pub async fn compute_from_sample(&self, workgroups: (u32, u32, u32)) -> anyhow::Result<&[f32]> { self.dispatch(workgroups).await }
+    pub async fn compute_from_fractal(&self, workgroups: (u32, u32, u32)) -> anyhow::Result<Vec<f32>> { self.dispatch(workgroups).await }
 
-    pub fn from_sample(&self, x: f32, y: f32) -> f32 {
-        let x0 = floor(x) as usize;
-        let y0 = floor(y) as usize;
+    async fn dispatch(&self, workgroups: (u32, u32, u32)) -> anyhow::Result<Vec<f32>> {
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("ComputeEncoder") });
 
-        let g00 = self.from_point(x0, y0);
-        let g10 = self.from_point(x0+1, y0);
-        let g01 = self.from_point(x0, y0+1);
-        let g11 = self.from_point(x0+1, y0+1);
-
-        let dx = x - x0 as f32;
-        let dy = y - y0 as f32;
-
-        let offset_g00 = Vector::new(dx, dy);
-        let offset_g10 = Vector::new(dx - 1., dy);
-        let offset_g01 = Vector::new(dx, dy - 1.);
-        let offset_g11 = Vector::new(dx - 1., dy - 1.);
-
-        let n00 = g00.dot(offset_g00);
-        let n10 = g10.dot(offset_g10);
-        let n01 = g01.dot(offset_g01);
-        let n11 = g11.dot(offset_g11);
-
-        let fade_x = fade(dx);
-        let fade_y = fade(dy);
-        
-        let nx0 = lerp(n00, n10, fade_x);
-        let nx1 = lerp(n01, n11, fade_x);
-
-        lerp(nx0, nx1, fade_y)
-    }
-
-    pub fn from_fractal(&self, x: f32, y: f32) -> f32 {
-        let mut total = 0.;
-        let mut frequency = 1.;
-        let mut amplitude = 1.;
-        let mut max_amplitude = 0.;
-
-        for _ in 0..self.octaves {
-            total += self.from_sample(x * frequency, y * frequency) * amplitude;
-            max_amplitude += amplitude;
-            frequency *= self.lacunarity;
-            amplitude *= self.persistence;
+        {
+            let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+            compute_pass.set_pipeline(&self.compute_pipeline);
+            compute_pass.set_bind_group(0, &self.bind_group, &[]);
+            compute_pass.dispatch_workgroups(workgroups.0, workgroups.1, workgroups.2);
         }
 
-        total / max_amplitude
+        let readback_buffer = self.device.create_buffer(&BufferDescriptor {
+            label: Some("ReadbackBuffer"),
+            size: 32*32*std::mem::size_of::<f32>() as u64,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        encoder.copy_buffer_to_buffer(
+            &self.output_buffer, 0,
+            &readback_buffer, 0,
+            32*32*std::mem::size_of::<f32>() as u64,
+        );
+
+        self.queue.submit(Some(encoder.finish()));
+
+        let buffer_slice = readback_buffer.slice(..);
+        let (sender, receiver) = futures_intrusive::channel::shared::oneshot_channel();
+        buffer_slice.map_async(wgpu::MapMode::Read, move |v| sender.send(v).unwrap());
+
+        self.device.poll(PollType::Wait).unwrap();
+        receiver.receive().await.unwrap()?;
+
+        let data = buffer_slice.get_mapped_range();
+        let result = bytemuck::cast_slice(&data).to_vec();
+        drop(data);
+        readback_buffer.unmap();
+
+        Ok(result)
     }
-}
-
-pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
-    a + (b - a) * t
-}
-
-pub fn fade(num: f32) -> f32 {
-    6. * num.powf(5.) -
-    15. * num.powf(4.) +
-    10. * num.powf(3.)
 }

@@ -2,6 +2,7 @@ pub mod init;
 
 pub mod noise {
     pub mod perlin;
+    pub mod perlin_cpu;
     pub mod poisson_disc;
 }
 
@@ -24,12 +25,12 @@ pub mod player {
 }
 
 pub mod terrain {
-    pub mod props {
+    /*pub mod props {
         pub mod props;
         pub mod trees {
             pub mod tree;
         }
-    }
+    }*/
     pub mod grid;
     pub mod chunks;
     pub mod collision;
