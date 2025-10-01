@@ -9,6 +9,11 @@ use tracing::info;
 
 use crate::noise::{perlin::Perlin, perlin_cpu::PerlinCPU};
 
+pub const MAP_WIDTH: u32 = 128;
+pub const MAP_HEIGHT: u32 = 128;
+pub const CHUNK_HEIGHT: u32 = 32;
+pub const CHUNK_WIDTH: u32 = 32;
+
 #[derive(Resource, Debug)]
 pub struct Chunkbase(HashMap<(i32, i32), Chunk>);
 
@@ -20,27 +25,44 @@ pub struct RenderDistance(pub i32);
 
 
 impl Chunkbase { 
-    pub fn new(height: i32, width: i32, perlin: &Perlin) -> Self { 
+    /*
+    pub fn new(perlin: &Perlin) -> Self { 
         let mut chunks = HashMap::new();
-        for y in 0..height {
-            for x in 0..width {
+        for y in 0..MAP_HEIGHT {
+            for x in 0..MAP_WIDTH {
                 chunks.insert((x, y), Chunk::new(x, y, perlin));
             }
         }
         Chunkbase(chunks)
-    }
+    }*/
 
-    pub fn new_with_mesh(height: i32, width: i32, perlin: &Perlin, normals: bool) -> Self { 
-        let chunks: HashMap<(i32, i32), Chunk> = (0..height)
+    pub fn new_with_mesh(perlin: &Perlin, normals: bool) -> Self { 
+        let workgroup_size_x = 8;
+        let workgroup_size_y = 8;
+
+        let total_width  = MAP_WIDTH * CHUNK_WIDTH;
+        let total_height = MAP_HEIGHT * CHUNK_HEIGHT;
+
+        let workgroups_x = (total_width  + workgroup_size_x - 1) / workgroup_size_x;
+        let workgroups_y = (total_height + workgroup_size_y - 1) / workgroup_size_y;
+        #[cfg(feature = "debug")]
+        let start = Instant::now();
+        let heightmap = block_on(perlin.compute_from_fractal((workgroups_x, workgroups_y, 1))).unwrap();
+        #[cfg(feature = "debug")]
+        info!("Thread locked for: {:?}", start.elapsed());
+
+        let chunks: HashMap<(i32, i32), Chunk> = (0..MAP_HEIGHT)
             .into_par_iter()
-            .flat_map(|y| (0..width).map(move |x| (x, y)).par_bridge())
+            .flat_map(|y| (0..MAP_HEIGHT).map(move |x| (x, y)).par_bridge())
             .map(|(x, y)| {
-                let mut chunk = Chunk::new(x, y, perlin);
+                let heightmap_index = (y * MAP_WIDTH + x) * 32*32;
+                let heightmap_slice = &heightmap[(heightmap_index as usize)..((heightmap_index + 32*32) as usize)];
+                let mut chunk = Chunk::new(x, y, heightmap_slice);
                 match normals {
                     true => chunk.generate_mesh_with_normals(),
                     false => chunk.generate_mesh()
                 };
-                ((x, y), chunk)
+                ((x as i32, y as i32), chunk)
             }).collect();
              
         Chunkbase(chunks)
@@ -93,20 +115,18 @@ pub struct Chunk {
 }   
 
 impl Chunk {
-    pub fn new(chunk_x: i32, chunk_y: i32, perlin: &Perlin) -> Self {
-        #[cfg(feature = "debug")]
-        let start = Instant::now();
-        let heightmap = block_on(perlin.compute_from_fractal((32/8, 32/8, 1))).unwrap();
-
-        #[cfg(feature = "debug")]
-        info!("Thread locked for: {:?}", start.elapsed());
+    pub fn new(chunk_x: u32, chunk_y: u32, heightmap: &[f32]) -> Self {
 
         let mut vertex_buffer: Vec<[f32; 3]> = Vec::with_capacity(1024);  
         let mut index_buffer: Vec<u32> = Vec::with_capacity(5766);
 
-        for y in 0..32 {
-            for x in 0..32 {
-                vertex_buffer.push([(x + chunk_x * 32) as f32, heightmap[(x + (32*y)) as usize], (y + chunk_y * 32) as f32]);
+        for y in 0..CHUNK_HEIGHT {
+            for x in 0..CHUNK_WIDTH {
+                vertex_buffer.push([
+                    (x + chunk_x * CHUNK_WIDTH) as f32,
+                    heightmap[(x + y*CHUNK_WIDTH) as usize],
+                    (y + chunk_y * CHUNK_HEIGHT) as f32,
+                ]);
             }
         }
 

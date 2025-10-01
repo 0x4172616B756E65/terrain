@@ -2,11 +2,14 @@ use bevy::{ecs::resource::Resource, math::Vec2};
 use wgpu::{util::{BufferInitDescriptor, DeviceExt}, wgt::PollType, BindGroup, Buffer, BufferDescriptor, BufferUsages, CommandEncoderDescriptor, ComputePassDescriptor, ComputePipeline, ComputePipelineDescriptor, Device, DeviceDescriptor, MapMode, PipelineCompilationOptions, Queue, WasmNotSend};
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 
+use crate::terrain::chunks::{CHUNK_HEIGHT, CHUNK_WIDTH, MAP_HEIGHT, MAP_WIDTH};
+
 #[derive(Debug, Clone, Resource)]
 pub struct Perlin {
     device: Device,
     queue: Queue,
 
+    size_buffer: Buffer,
     seed_buffer: Buffer,
     vector_buffer: Buffer,
     output_buffer: Buffer,
@@ -14,6 +17,13 @@ pub struct Perlin {
 
     compute_pipeline: ComputePipeline,
     bind_group: BindGroup
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct Size {
+    width: u32,
+    height: u32,
 }
 
 impl Perlin {
@@ -46,21 +56,31 @@ impl Perlin {
             Vec2::new(1.0,-1.0), Vec2::new(-1.0,-1.0),
         ];
 
+        let size_data = Size { width: MAP_WIDTH, height: MAP_HEIGHT };
+        let vertex_count = (MAP_HEIGHT * MAP_WIDTH) as u64;
+        let buffer_size = vertex_count * CHUNK_WIDTH as u64 * CHUNK_HEIGHT as u64 * std::mem::size_of::<f32>() as u64;
+
+         let size_buffer = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("SizeBuffer"),
+            contents: bytemuck::bytes_of(&size_data),
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+        }); 
+
         let seed_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("SeedBuffer"),
             contents: bytemuck::cast_slice(&table_512),
-            usage: wgpu::BufferUsages::STORAGE,
+            usage: BufferUsages::STORAGE,
         });
 
         let vector_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("VectorBuffer"),
             contents: bytemuck::cast_slice(&vectors_data),
-            usage: wgpu::BufferUsages::STORAGE,
+            usage: BufferUsages::STORAGE,
         });
 
         let output_buffer = device.create_buffer(&BufferDescriptor {
             label: Some("OutputBuffer"),
-            size: 32*32*std::mem::size_of::<f32>() as u64,
+            size: buffer_size, 
             usage: BufferUsages::STORAGE | BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
@@ -82,11 +102,11 @@ impl Perlin {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("BindGroupLayout"),
             entries: &[
-                wgpu::BindGroupLayoutEntry {
+               wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },
@@ -106,6 +126,16 @@ impl Perlin {
                     binding: 2,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage { read_only: false },
                         has_dynamic_offset: false,
                         min_binding_size: None,
@@ -119,9 +149,10 @@ impl Perlin {
             label: Some("BindGroup"),
             layout: &bind_group_layout,
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: seed_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: vector_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 2, resource: output_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 0, resource: size_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: seed_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: vector_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 3, resource: output_buffer.as_entire_binding() },
             ],
         });
 
@@ -143,6 +174,8 @@ impl Perlin {
         Ok(Self {
             device,
             queue,
+
+            size_buffer,
             seed_buffer,
             vector_buffer,
             output_buffer,
@@ -165,9 +198,12 @@ impl Perlin {
             compute_pass.dispatch_workgroups(workgroups.0, workgroups.1, workgroups.2);
         }
 
+        let vertex_count = (MAP_HEIGHT * MAP_WIDTH) as u64;
+        let buffer_size = vertex_count * CHUNK_WIDTH as u64 * CHUNK_HEIGHT as u64 * std::mem::size_of::<f32>() as u64;
+
         let readback_buffer = self.device.create_buffer(&BufferDescriptor {
             label: Some("ReadbackBuffer"),
-            size: 32*32*std::mem::size_of::<f32>() as u64,
+            size: buffer_size,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -175,7 +211,7 @@ impl Perlin {
         encoder.copy_buffer_to_buffer(
             &self.output_buffer, 0,
             &readback_buffer, 0,
-            32*32*std::mem::size_of::<f32>() as u64,
+            buffer_size 
         );
 
         self.queue.submit(Some(encoder.finish()));

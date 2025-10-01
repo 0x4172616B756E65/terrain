@@ -43,7 +43,7 @@ fn init_resources(mut commands: Commands, perlin: Res<Perlin>) {
     */
     #[cfg(feature = "debug")]
     info!("Thread blocked for {:?}", start.elapsed());
-    let chunkbase: Chunkbase = Chunkbase::new_with_mesh(256, 256, &perlin, true);
+    let chunkbase: Chunkbase = Chunkbase::new_with_mesh(&perlin, true);
 
     #[cfg(feature = "debug")]
     info!("Time to load chunkbase: {:?}\n Current chunks: 65536", start.elapsed());
