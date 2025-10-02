@@ -7,7 +7,8 @@ use std::collections::HashSet;
 
 
 fn main() {
-    tracing_subscriber::fmt().init();
+    tracing_subscriber::fmt()
+        .init();
 
     App::new()
         .add_plugins(DefaultPlugins)

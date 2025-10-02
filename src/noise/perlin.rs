@@ -1,6 +1,8 @@
 use bevy::{ecs::resource::Resource, math::Vec2};
 use wgpu::{util::{BufferInitDescriptor, DeviceExt}, wgt::PollType, BindGroup, Buffer, BufferDescriptor, BufferUsages, CommandEncoderDescriptor, ComputePassDescriptor, ComputePipeline, ComputePipelineDescriptor, Device, DeviceDescriptor, MapMode, PipelineCompilationOptions, Queue, WasmNotSend};
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
+#[cfg(feature = "debug")]
+use tracing::info;
 
 use crate::terrain::chunks::{CHUNK_HEIGHT, CHUNK_WIDTH, MAP_HEIGHT, MAP_WIDTH};
 
@@ -8,12 +10,7 @@ use crate::terrain::chunks::{CHUNK_HEIGHT, CHUNK_WIDTH, MAP_HEIGHT, MAP_WIDTH};
 pub struct Perlin {
     device: Device,
     queue: Queue,
-
-    size_buffer: Buffer,
-    seed_buffer: Buffer,
-    vector_buffer: Buffer,
     output_buffer: Buffer,
-    //readback_buffer: Buffer,
 
     compute_pipeline: ComputePipeline,
     bind_group: BindGroup
@@ -21,13 +18,22 @@ pub struct Perlin {
 
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct Size {
+struct Data {
     width: u32,
     height: u32,
+    scale: f32,
+    _pad: u32
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct Vector {
+    x: f32,
+    y: f32
 }
 
 impl Perlin {
-    pub async fn new(seed: u64) -> anyhow::Result<Self> {
+    pub async fn new(seed: u64, scale: f32) -> anyhow::Result<Self> {
         let instance = wgpu::Instance::default();
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -49,20 +55,32 @@ impl Perlin {
             arr
         };
 
-        let vectors_data: [Vec2; 8] = [
-            Vec2::new(1.0,0.0), Vec2::new(-1.0,0.0),
-            Vec2::new(0.0,1.0), Vec2::new(0.0,-1.0),
-            Vec2::new(1.0,1.0), Vec2::new(-1.0,1.0),
-            Vec2::new(1.0,-1.0), Vec2::new(-1.0,-1.0),
-        ];
+        let vectors_data: [Vector; 16] = [
+            Vector { x:  1.0,        y:  0.0       },
+            Vector { x:  0.9238795,  y:  0.38268343},
+            Vector { x:  0.70710677, y:  0.70710677},
+            Vector { x:  0.38268343, y:  0.9238795 },
+            Vector { x:  0.0,        y:  1.0       },
+            Vector { x: -0.38268343, y:  0.9238795 },
+            Vector { x: -0.70710677, y:  0.70710677},
+            Vector { x: -0.9238795,  y:  0.38268343},
+            Vector { x: -1.0,        y:  0.0       },
+            Vector { x: -0.9238795,  y: -0.38268343},
+            Vector { x: -0.70710677, y: -0.70710677},
+            Vector { x: -0.38268343, y: -0.9238795 },
+            Vector { x:  0.0,        y: -1.0       },
+            Vector { x:  0.38268343, y: -0.9238795 },
+            Vector { x:  0.70710677, y: -0.70710677},
+            Vector { x:  0.9238795,  y: -0.38268343},
+        ]; 
 
-        let size_data = Size { width: MAP_WIDTH, height: MAP_HEIGHT };
+        let data = Data { width: MAP_WIDTH * CHUNK_WIDTH, height: MAP_HEIGHT * CHUNK_HEIGHT, scale, _pad: 0 };
         let vertex_count = (MAP_HEIGHT * MAP_WIDTH) as u64;
         let buffer_size = vertex_count * CHUNK_WIDTH as u64 * CHUNK_HEIGHT as u64 * std::mem::size_of::<f32>() as u64;
 
-         let size_buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("SizeBuffer"),
-            contents: bytemuck::bytes_of(&size_data),
+         let data_buffer = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("DataBuffer"),
+            contents: bytemuck::bytes_of(&data),
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         }); 
 
@@ -84,15 +102,6 @@ impl Perlin {
             usage: BufferUsages::STORAGE | BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
-
-        /*        
-        let readback_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("ReadbackBuffer"),
-            size: 32*32*std::mem::size_of::<f32>() as u64,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        */
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("from_point"),
@@ -149,7 +158,7 @@ impl Perlin {
             label: Some("BindGroup"),
             layout: &bind_group_layout,
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: size_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 0, resource: data_buffer.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 1, resource: seed_buffer.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 2, resource: vector_buffer.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 3, resource: output_buffer.as_entire_binding() },
@@ -174,18 +183,13 @@ impl Perlin {
         Ok(Self {
             device,
             queue,
-
-            size_buffer,
-            seed_buffer,
-            vector_buffer,
             output_buffer,
-            //readback_buffer,
+
             compute_pipeline,
             bind_group,
         })
     }
 
-    //pub async fn compute_from_sample(&self, workgroups: (u32, u32, u32)) -> anyhow::Result<&[f32]> { self.dispatch(workgroups).await }
     pub async fn compute_from_fractal(&self, workgroups: (u32, u32, u32)) -> anyhow::Result<Vec<f32>> { self.dispatch(workgroups).await }
 
     async fn dispatch(&self, workgroups: (u32, u32, u32)) -> anyhow::Result<Vec<f32>> {
@@ -228,6 +232,8 @@ impl Perlin {
         drop(data);
         readback_buffer.unmap();
 
+        #[cfg(feature = "debug")]
+        info!("Vertex data: {:?}", &result[0..128]);
         Ok(result)
     }
 }

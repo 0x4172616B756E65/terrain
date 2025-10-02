@@ -13,6 +13,7 @@ pub const MAP_WIDTH: u32 = 128;
 pub const MAP_HEIGHT: u32 = 128;
 pub const CHUNK_HEIGHT: u32 = 32;
 pub const CHUNK_WIDTH: u32 = 32;
+pub const CHUNK_AREA: u32 = 1024;
 
 #[derive(Resource, Debug)]
 pub struct Chunkbase(HashMap<(i32, i32), Chunk>);
@@ -45,24 +46,33 @@ impl Chunkbase {
 
         let workgroups_x = (total_width  + workgroup_size_x - 1) / workgroup_size_x;
         let workgroups_y = (total_height + workgroup_size_y - 1) / workgroup_size_y;
+
         #[cfg(feature = "debug")]
         let start = Instant::now();
         let heightmap = block_on(perlin.compute_from_fractal((workgroups_x, workgroups_y, 1))).unwrap();
         #[cfg(feature = "debug")]
         info!("Thread locked for: {:?}", start.elapsed());
 
+       
+        #[cfg(feature = "debug")]
+        info!("Heightmap length: {:?}", heightmap.len());
+
+        let row_width_in_elements = MAP_WIDTH * CHUNK_AREA;
         let chunks: HashMap<(i32, i32), Chunk> = (0..MAP_HEIGHT)
             .into_par_iter()
-            .flat_map(|y| (0..MAP_HEIGHT).map(move |x| (x, y)).par_bridge())
-            .map(|(x, y)| {
-                let heightmap_index = (y * MAP_WIDTH + x) * 32*32;
-                let heightmap_slice = &heightmap[(heightmap_index as usize)..((heightmap_index + 32*32) as usize)];
-                let mut chunk = Chunk::new(x, y, heightmap_slice);
-                match normals {
-                    true => chunk.generate_mesh_with_normals(),
-                    false => chunk.generate_mesh()
-                };
-                ((x as i32, y as i32), chunk)
+            .flat_map_iter(|chunk_y| (0..MAP_WIDTH).map(move |chunk_x| (chunk_x, chunk_y)))
+            .map(|(chunk_x, chunk_y)| {
+                let start = (chunk_y * row_width_in_elements + chunk_x * CHUNK_AREA) as usize;
+                let end = start + CHUNK_AREA as usize;
+
+                let slice = &heightmap[start..end];
+
+                let mut chunk = Chunk::new(chunk_x, chunk_y, slice);
+
+                if normals { chunk.generate_mesh_with_normals();} 
+                else { chunk.generate_mesh(); }              
+                
+                ((chunk_x as i32, chunk_y as i32), chunk)
             }).collect();
              
         Chunkbase(chunks)
@@ -121,13 +131,21 @@ impl Chunk {
         let mut index_buffer: Vec<u32> = Vec::with_capacity(5766);
 
         for y in 0..CHUNK_HEIGHT {
+            #[cfg(feature = "debug")]
+            let mut heightrow = Vec::new();
             for x in 0..CHUNK_WIDTH {
                 vertex_buffer.push([
                     (x + chunk_x * CHUNK_WIDTH) as f32,
-                    heightmap[(x + y*CHUNK_WIDTH) as usize],
+                    (heightmap[(y + x*CHUNK_WIDTH) as usize] + 1.0).powi(4),
                     (y + chunk_y * CHUNK_HEIGHT) as f32,
-                ]);
+                ]); 
+                #[cfg(feature = "debug")]
+                heightrow.push((heightmap[(y + x*CHUNK_WIDTH) as usize] + 1.0).powi(4));
             }
+            #[cfg(feature = "debug")]
+            info!("Heighrow: {:?}", heightrow);
+            #[cfg(feature = "debug")]
+            heightrow.clear();
         }
 
         for y in 0..31 {
