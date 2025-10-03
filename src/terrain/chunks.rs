@@ -9,11 +9,10 @@ use tracing::info;
 
 use crate::noise::{perlin::Perlin, perlin_cpu::PerlinCPU};
 
-pub const MAP_WIDTH: u32 = 128;
-pub const MAP_HEIGHT: u32 = 128;
-pub const CHUNK_HEIGHT: u32 = 32;
-pub const CHUNK_WIDTH: u32 = 32;
-pub const CHUNK_AREA: u32 = 1024;
+pub const MAP_WIDTH: usize = 128;
+pub const MAP_HEIGHT: usize = 128;
+pub const CHUNK_HEIGHT: usize = 32;
+pub const CHUNK_WIDTH: usize = 32;
 
 #[derive(Resource, Debug)]
 pub struct Chunkbase(HashMap<(i32, i32), Chunk>);
@@ -26,18 +25,7 @@ pub struct RenderDistance(pub i32);
 
 
 impl Chunkbase { 
-    /*
     pub fn new(perlin: &Perlin) -> Self { 
-        let mut chunks = HashMap::new();
-        for y in 0..MAP_HEIGHT {
-            for x in 0..MAP_WIDTH {
-                chunks.insert((x, y), Chunk::new(x, y, perlin));
-            }
-        }
-        Chunkbase(chunks)
-    }*/
-
-    pub fn new_with_mesh(perlin: &Perlin, normals: bool) -> Self { 
         let workgroup_size_x = 8;
         let workgroup_size_y = 8;
 
@@ -49,30 +37,26 @@ impl Chunkbase {
 
         #[cfg(feature = "debug")]
         let start = Instant::now();
-        let heightmap = block_on(perlin.compute_from_fractal((workgroups_x, workgroups_y, 1))).unwrap();
+        let heightmap = block_on(perlin.compute_from_fractal((workgroups_x as u32, workgroups_y as u32, 1))).unwrap();
         #[cfg(feature = "debug")]
         info!("Thread locked for: {:?}", start.elapsed());
+        let chunkmap: &[[[f32; 32]; 32]; 16384] =  unsafe { &*(heightmap.as_ptr() as *const [[[f32; 32]; 32]; 16384]) };
 
-       
-        #[cfg(feature = "debug")]
-        info!("Heightmap length: {:?}", heightmap.len());
-
-        let row_width_in_elements = MAP_WIDTH * CHUNK_AREA;
         let chunks: HashMap<(i32, i32), Chunk> = (0..MAP_HEIGHT)
             .into_par_iter()
             .flat_map_iter(|chunk_y| (0..MAP_WIDTH).map(move |chunk_x| (chunk_x, chunk_y)))
-            .map(|(chunk_x, chunk_y)| {
-                let start = (chunk_y * row_width_in_elements + chunk_x * CHUNK_AREA) as usize;
-                let end = start + CHUNK_AREA as usize;
+            .map(|(x, y)| {
+                let slice: &[[f32; 32]; 32] = &chunkmap[x + y * MAP_WIDTH];
 
-                let slice = &heightmap[start..end];
+                let mut halo: [f32; CHUNK_WIDTH + CHUNK_HEIGHT + 1] = [0.0; CHUNK_WIDTH + CHUNK_HEIGHT + 1];
+                halo[0..CHUNK_WIDTH].copy_from_slice(&chunkmap[x + 1][0..32][0]);
+                halo[CHUNK_WIDTH..CHUNK_WIDTH + CHUNK_HEIGHT].copy_from_slice(&chunkmap[y * MAP_WIDTH][0][0..32]);
+                halo[CHUNK_HEIGHT + CHUNK_WIDTH] = chunkmap[(x + 1 + y * MAP_WIDTH) - 1][0][0];
 
-                let mut chunk = Chunk::new(chunk_x, chunk_y, slice);
+                let mut chunk_data = ChunkData::new(&slice, &halo);
+                let chunk = Chunk::new(x, y, chunk_data.to_mesh_with_normals());
 
-                if normals { chunk.generate_mesh_with_normals();} 
-                else { chunk.generate_mesh(); }              
-                
-                ((chunk_x as i32, chunk_y as i32), chunk)
+                ((x as i32, y as i32), chunk)
             }).collect();
              
         Chunkbase(chunks)
@@ -81,79 +65,71 @@ impl Chunkbase {
     pub fn load_chunk(&self, coordinates: &(i32, i32)) -> Option<&Chunk> {
         self.0.get(coordinates)
     }
+}
 
-    pub fn load_chunks(&self, cx: i32, cy: i32, radius: i32) -> Vec<&Chunk> {
-        let mut chunks = Vec::with_capacity((radius * 2 + 1).pow(2) as usize);
-        let radius_sq = radius * radius;
-
-        for y in -radius..=radius {
-            let y_sq = y * y;
-            for x in -radius..=radius {
-                if x * x + y_sq <= radius_sq {
-                    let chunk_coords = (cx.wrapping_add(x), cy.wrapping_add(y));
-                    if let Some(chunk) = self.0.get(&chunk_coords) {
-                        chunks.push(chunk);
-                    }
-                }
-            }
-        }
-
-        /* WIP parallelization of chunk loading
-        let chunks: Vec<&Chunk> = (-radius..=radius)
-            .into_par_iter()
-            .flat_map(|y| (-radius..=radius).filter_map(move |x| { if x * x + y * y <= radius * radius {(x, y)}}).par_bridge())
-            .map(|(x, y)| {
-                let chunk_coords = (cx.wrapping_add(x), cy.wrapping_add(y));
-                if let Some(chunk) = self.0.get(&chunk_coords) { chunk }
-            }).collect();*/
-
-        chunks
-    }
-
-    pub fn load_chunks_from_map(&self, map: Vec<(i32, i32)>) -> Vec<&Chunk> {
-        let mut chunks = Vec::with_capacity(map.len());
-        for coords in map { if let Some(chunk) = self.0.get(&coords) { chunks.push(chunk); } }
-        chunks
-    }
+pub struct ChunkData {
+    pub  vertex_buffer: Vec<[f32; 3]>,
+    pub  index_buffer: Vec<u32>,
 }
 
 #[derive(Debug)]
 pub struct Chunk {
-    pub  vertex_buffer: Vec<[f32; 3]>,
-    pub  index_buffer: Vec<u32>,
-    mesh: Option<Mesh>,
+    pub x: usize,
+    pub y: usize,
+    mesh: Mesh,
 }   
 
 impl Chunk {
-    pub fn new(chunk_x: u32, chunk_y: u32, heightmap: &[f32]) -> Self {
+    pub fn new(x: usize, y: usize, mesh: Mesh) -> Self { Chunk { x, y, mesh } }
+    pub fn get_mesh(&self) -> &Mesh { &self.mesh }
+}
 
-        let mut vertex_buffer: Vec<[f32; 3]> = Vec::with_capacity(1024);  
-        let mut index_buffer: Vec<u32> = Vec::with_capacity(5766);
+impl ChunkData {
+    pub fn new(heightmap: &[[f32; 32]; 32], halo: &[f32; CHUNK_HEIGHT + CHUNK_WIDTH + 1]) -> Self {
 
-        for y in 0..CHUNK_HEIGHT {
-            #[cfg(feature = "debug")]
-            let mut heightrow = Vec::new();
-            for x in 0..CHUNK_WIDTH {
-                vertex_buffer.push([
-                    (x + chunk_x * CHUNK_WIDTH) as f32,
-                    (heightmap[(y + x*CHUNK_WIDTH) as usize] + 1.0).powi(4),
-                    (y + chunk_y * CHUNK_HEIGHT) as f32,
-                ]); 
-                #[cfg(feature = "debug")]
-                heightrow.push((heightmap[(y + x*CHUNK_WIDTH) as usize] + 1.0).powi(4));
+        let mut vertex_buffer: Vec<[f32; 3]> = Vec::with_capacity((CHUNK_WIDTH + 1) * (CHUNK_HEIGHT + 1));  
+        let mut index_buffer: Vec<u32> = Vec::with_capacity((CHUNK_WIDTH + CHUNK_HEIGHT) * 6);
+
+        for y in 0..=CHUNK_HEIGHT {
+            for x in 0..=CHUNK_WIDTH {
+                if y == CHUNK_HEIGHT && x == CHUNK_WIDTH {
+                    vertex_buffer.push([
+                        x as f32,
+                        (halo[CHUNK_HEIGHT + CHUNK_WIDTH] + 1.0).powi(4),
+                        y as f32
+                    ]);
+                }
+                else if x == CHUNK_WIDTH {
+                    vertex_buffer.push([
+                        x as f32,
+                        (halo[y + CHUNK_WIDTH] + 1.0).powi(4),
+                        y as f32
+                    ]);
+                }
+                else if y == CHUNK_HEIGHT {
+                    vertex_buffer.push([
+                        x as f32,
+                        (halo[x] + 1.0).powi(4),
+                        y as f32
+                    ]);
+                } else {
+                    vertex_buffer.push([
+                        x as f32,
+                        (heightmap[y][x] + 1.0).powi(4),
+                        y as f32,
+                    ]);
+                }
             }
-            #[cfg(feature = "debug")]
-            info!("Heighrow: {:?}", heightrow);
-            #[cfg(feature = "debug")]
-            heightrow.clear();
         }
 
-        for y in 0..31 {
-            for x in 0..31 {
-                let i0 = x + y * 32;
+        for y in 0..CHUNK_HEIGHT as u32 {
+            for x in 0..CHUNK_WIDTH as u32 {
+                let stride = (CHUNK_WIDTH + 1) as u32;
+                let i0 = x + y * stride;
                 let i1 = i0 + 1;
-                let i2 = i0 + 32;
+                let i2 = i0 + stride;
                 let i3 = i2 + 1;
+
 
                 index_buffer.push(i0);
                 index_buffer.push(i3);
@@ -165,8 +141,7 @@ impl Chunk {
             }
         }
 
-        Chunk { vertex_buffer, index_buffer, mesh: None }
-
+        ChunkData { vertex_buffer, index_buffer, }
     }
     pub fn new_cpu(chunk_x: i32, chunk_y: i32, perlin: &PerlinCPU) -> Self {
         let mut vertex_buffer: Vec<[f32; 3]> = Vec::with_capacity(1024);  
@@ -199,35 +174,22 @@ impl Chunk {
             }
         }
 
-        Chunk { vertex_buffer, index_buffer, mesh: None }
+        ChunkData { vertex_buffer, index_buffer }
     }
 
-    pub fn generate_mesh(&mut self) -> &Mesh {
-        if self.mesh.is_none() {
-            self.mesh = Some(Mesh::new(PrimitiveTopology::TriangleList,
-                RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD)
-                .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, self.vertex_buffer.clone())
-                .with_inserted_indices(Indices::U32(self.index_buffer.clone()))
-            );
-        }
-        self.mesh.as_ref().unwrap()
+    pub fn to_mesh(&mut self) -> Mesh {
+        Mesh::new(PrimitiveTopology::TriangleList,
+            RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD)
+            .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, self.vertex_buffer.clone())
+            .with_inserted_indices(Indices::U32(self.index_buffer.clone()))
     }
 
-    pub fn generate_mesh_with_normals(&mut self) -> &Mesh {
-        if self.mesh.is_none() {
-            let mut mesh = Mesh::new(PrimitiveTopology::TriangleList,
-                RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD)
-                .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, self.vertex_buffer.clone())
-                .with_inserted_indices(Indices::U32(self.index_buffer.clone()));
-            mesh.compute_smooth_normals();
-            self.mesh = Some(mesh);
-        }
-
-        self.mesh.as_ref().unwrap()
-    }
-
-
-    pub fn get_mesh(&self) -> &Option<Mesh> {
-        &self.mesh 
+    pub fn to_mesh_with_normals(&mut self) -> Mesh {
+        let mut mesh = Mesh::new(PrimitiveTopology::TriangleList,
+            RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD)
+            .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, self.vertex_buffer.clone())
+            .with_inserted_indices(Indices::U32(self.index_buffer.clone()));
+        mesh.compute_smooth_normals();
+        mesh
     }
 }

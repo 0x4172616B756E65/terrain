@@ -35,7 +35,7 @@ impl Default for Player {
 
             //Physics/motion
             gravity: 9.8, // m/s
-            speed: 50_f32, // Km/h, douvle for running
+            speed: 500_f32, // Km/h, douvle for running
             speed_multiplier: 2_f32,
             direction: Vec3::ZERO,
             momentum: Vec3::ZERO, 
@@ -64,7 +64,7 @@ fn spawn_player(mut commands: Commands) {
 
     let player_entity = commands.spawn((
         Player::default(),
-        Transform::from_xyz(4092., 32., 4092.),
+        Transform::from_xyz(2048., 32., 2048.),
         Collider::cuboid(0.5, 1.8, 0.25),
         RigidBody::KinematicPositionBased,
         KinematicCharacterController {

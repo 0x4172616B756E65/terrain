@@ -8,6 +8,7 @@ pub mod noise {
 
 pub mod player {
     pub mod inventory {
+        pub mod hud;
         pub mod inventory;
         pub mod items;
     }

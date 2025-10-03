@@ -74,7 +74,7 @@ impl Perlin {
             Vector { x:  0.9238795,  y: -0.38268343},
         ]; 
 
-        let data = Data { width: MAP_WIDTH * CHUNK_WIDTH, height: MAP_HEIGHT * CHUNK_HEIGHT, scale, _pad: 0 };
+        let data = Data { width: (MAP_WIDTH * CHUNK_WIDTH) as u32, height: (MAP_HEIGHT * CHUNK_HEIGHT) as u32, scale, _pad: 0 };
         let vertex_count = (MAP_HEIGHT * MAP_WIDTH) as u64;
         let buffer_size = vertex_count * CHUNK_WIDTH as u64 * CHUNK_HEIGHT as u64 * std::mem::size_of::<f32>() as u64;
 
