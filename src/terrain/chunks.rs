@@ -2,7 +2,9 @@
 use std::time::Instant;
 use std::{collections::HashMap};
 
-use bevy::{asset::RenderAssetUsages, ecs::{entity::Entity, resource::Resource}, render::mesh::{Indices, Mesh, PrimitiveTopology}, tasks::block_on};
+use bevy::prelude::*;
+use bevy::{asset::RenderAssetUsages, ecs::{bundle::Bundle, entity::Entity, resource::Resource}, render::mesh::{Indices, Mesh, PrimitiveTopology}, tasks::block_on};
+use bevy_rapier3d::prelude::Collider;
 use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator};
 #[cfg(feature = "debug")]
 use tracing::info;
@@ -49,12 +51,37 @@ impl Chunkbase {
                 let slice: &[[f32; 32]; 32] = &chunkmap[x + y * MAP_WIDTH];
 
                 let mut halo: [f32; CHUNK_WIDTH + CHUNK_HEIGHT + 1] = [0.0; CHUNK_WIDTH + CHUNK_HEIGHT + 1];
-                halo[0..CHUNK_WIDTH].copy_from_slice(&chunkmap[x + 1][0..32][0]);
-                halo[CHUNK_WIDTH..CHUNK_WIDTH + CHUNK_HEIGHT].copy_from_slice(&chunkmap[y * MAP_WIDTH][0][0..32]);
-                halo[CHUNK_HEIGHT + CHUNK_WIDTH] = chunkmap[(x + 1 + y * MAP_WIDTH) - 1][0][0];
+                if x < MAP_WIDTH - 1 && y < MAP_HEIGHT - 1 {
+                    //Init a halo array that holds
+                    //[x; 32] for horizontal haloing
+                    //[y; 32] for vertical haloing
+                    //[z] for bottom-right corner haloing
+
+                    //When y = 33
+                    //[x; 32] = 
+                    halo[0..CHUNK_WIDTH].copy_from_slice(&chunkmap[x + (y + 1) * MAP_WIDTH][0]);
+
+                    // When x = 33
+                    //[y; 32] =
+                    for cy in 0..CHUNK_HEIGHT {
+                        halo[CHUNK_WIDTH + cy] = chunkmap[(x + 1) + y * MAP_WIDTH][cy][0];
+                    }
+
+                    //When x, y = 33
+                    //[z] = curr x + 1, curr y + 1
+                    halo[CHUNK_HEIGHT + CHUNK_WIDTH] = chunkmap[(x + 1) + ((y + 1) * MAP_WIDTH)][0][0]; 
+                }
 
                 let mut chunk_data = ChunkData::new(&slice, &halo);
-                let chunk = Chunk::new(x, y, chunk_data.to_mesh_with_normals());
+                let mesh = chunk_data.into_mesh_with_normals();
+
+                let flat_slice = slice.iter().flat_map(|row| row.iter().copied()).collect();
+                let collider = Collider::heightfield(flat_slice, CHUNK_WIDTH, CHUNK_HEIGHT, Vec3::ONE);
+                let chunk = Chunk { 
+                    transform: Transform::from_xyz((x * 32) as f32, 0., (y * 32) as f32), 
+                    collider: collider,
+                    mesh: mesh,
+                };
 
                 ((x as i32, y as i32), chunk)
             }).collect();
@@ -62,7 +89,7 @@ impl Chunkbase {
         Chunkbase(chunks)
     }
 
-    pub fn load_chunk(&self, coordinates: &(i32, i32)) -> Option<&Chunk> {
+    pub fn get_chunk(&self, coordinates: &(i32, i32)) -> Option<&Chunk> {
         self.0.get(coordinates)
     }
 }
@@ -72,16 +99,16 @@ pub struct ChunkData {
     pub  index_buffer: Vec<u32>,
 }
 
-#[derive(Debug)]
+#[derive(/*Bundle,*/ Debug)]
 pub struct Chunk {
-    pub x: usize,
-    pub y: usize,
-    mesh: Mesh,
-}   
+    pub transform: Transform,
+    pub collider: Collider,
+    pub mesh: Mesh,
+}
 
 impl Chunk {
-    pub fn new(x: usize, y: usize, mesh: Mesh) -> Self { Chunk { x, y, mesh } }
-    pub fn get_mesh(&self) -> &Mesh { &self.mesh }
+    //pub fn new(x: usize, y: usize, mesh: Mesh) -> Self { Chunk { x, y, mesh } }
+    //pub fn get_mesh(&self) -> &Mesh { &self.mesh }
 }
 
 impl ChunkData {
@@ -90,35 +117,19 @@ impl ChunkData {
         let mut vertex_buffer: Vec<[f32; 3]> = Vec::with_capacity((CHUNK_WIDTH + 1) * (CHUNK_HEIGHT + 1));  
         let mut index_buffer: Vec<u32> = Vec::with_capacity((CHUNK_WIDTH + CHUNK_HEIGHT) * 6);
 
+
         for y in 0..=CHUNK_HEIGHT {
             for x in 0..=CHUNK_WIDTH {
-                if y == CHUNK_HEIGHT && x == CHUNK_WIDTH {
-                    vertex_buffer.push([
-                        x as f32,
-                        (halo[CHUNK_HEIGHT + CHUNK_WIDTH] + 1.0).powi(4),
-                        y as f32
-                    ]);
-                }
-                else if x == CHUNK_WIDTH {
-                    vertex_buffer.push([
-                        x as f32,
-                        (halo[y + CHUNK_WIDTH] + 1.0).powi(4),
-                        y as f32
-                    ]);
-                }
-                else if y == CHUNK_HEIGHT {
-                    vertex_buffer.push([
-                        x as f32,
-                        (halo[x] + 1.0).powi(4),
-                        y as f32
-                    ]);
-                } else {
-                    vertex_buffer.push([
-                        x as f32,
-                        (heightmap[y][x] + 1.0).powi(4),
-                        y as f32,
-                    ]);
-                }
+                vertex_buffer.push([
+                    x as f32,
+                    match(y, x) {
+                        (CHUNK_HEIGHT, CHUNK_WIDTH) => (halo[CHUNK_HEIGHT + CHUNK_WIDTH] + 1.0).powi(4),
+                        (_, CHUNK_WIDTH) => (halo[y + CHUNK_WIDTH] + 1.0).powi(4),
+                        (CHUNK_HEIGHT, _) => (halo[x] + 1.0).powi(4),
+                        _ => (heightmap[y][x] + 1.0).powi(4)
+                    },
+                    y as f32
+                ]);
             }
         }
 
@@ -177,14 +188,14 @@ impl ChunkData {
         ChunkData { vertex_buffer, index_buffer }
     }
 
-    pub fn to_mesh(&mut self) -> Mesh {
+    pub fn into_mesh(&mut self) -> Mesh {
         Mesh::new(PrimitiveTopology::TriangleList,
             RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD)
             .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, self.vertex_buffer.clone())
             .with_inserted_indices(Indices::U32(self.index_buffer.clone()))
     }
 
-    pub fn to_mesh_with_normals(&mut self) -> Mesh {
+    pub fn into_mesh_with_normals(&mut self) -> Mesh {
         let mut mesh = Mesh::new(PrimitiveTopology::TriangleList,
             RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD)
             .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, self.vertex_buffer.clone())

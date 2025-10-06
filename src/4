@@ -29,11 +29,25 @@ struct PreviousRadius(pub HashSet<(i32, i32)>);
 #[derive(Component)]
 struct CustomUV;
 
-fn init_resources(mut commands: Commands, perlin: Res<Perlin>, mut meshes: ResMut<Assets<Mesh>>) {
-    let chunkbase: Chunkbase = Chunkbase::new(&perlin);
+fn init_resources(mut commands: Commands, perlin: Res<Perlin>) {
+    #[cfg(feature = "debug")]
+    let start = Instant::now();
+
+    /* WIP: parallel loading perlin
+    let (sender, receiver) = futures_intrusive::channel::shared::oneshot_channel();
+
+    AsyncComputeTaskPool::get().spawn(async move {
+        let perlin = Perlin::new(1).unwrap();
+        sender.send(perlin).unwrap();
+    }).detach();
+    */
+    #[cfg(feature = "debug")]
+    info!("Thread blocked for {:?}", start.elapsed());
+    let chunkbase: Chunkbase = Chunkbase::new(&perlin, commands);
+    info!("Chunkbase slice: {:?}", chunkbase.load_chunk(&(0,0)).unwrap().get_mesh());
 
     #[cfg(feature = "debug")]
-    info!("Time to load chunkbase: {:?}\n Current chunks: {}", start.elapsed(), 16_000);
+    info!("Time to load chunkbase: {:?}\n Current chunks: 65536", start.elapsed());
 
     commands.spawn(Collider::cuboid(8192., 0., 8192.));
     commands.insert_resource(chunkbase);
@@ -83,17 +97,17 @@ fn load_map(
         }
 
         for coord in load_raw.difference(&previous_radius.0) {
-            if let Some(chunk) = chunkbase.get_chunk(coord) {
+            if let Some(chunk) = chunkbase.load_chunk(coord) {
+                let chunk_mesh_handle = meshes.add(chunk.get_mesh().clone());
 
-                let chunk_entity = commands.spawn((
-                    Mesh3d(meshes.add(chunk.mesh.clone())),
-                    chunk.transform,
-                    //chunk.collider.clone(),
+                let chunk = commands.spawn((
+                    Mesh3d(chunk_mesh_handle),
+                    Transform::from_xyz((coord.0 * 32) as f32, 0., (coord.1 * 32) as f32),
                     MeshMaterial3d(stone.clone()),
                     CustomUV,
                 )).id();
 
-                rendered_chunks.0.insert(*coord, chunk_entity);
+                rendered_chunks.0.insert(*coord, chunk);
             }
         }
 
@@ -113,17 +127,18 @@ fn load_map(
         }
 
         for coord in load_raw.difference(&previous_radius.0) {
-            if let Some(chunk) = chunkbase.get_chunk(coord) {
+            if let Some(chunk) = chunkbase.load_chunk(coord) {
+                let chunk_mesh_handle = meshes.add(chunk.get_mesh().clone());
 
-                let chunk_entity = commands.spawn((
-                    Mesh3d(meshes.add(chunk.mesh.clone())),
-                    chunk.transform,
-                    //chunk.collider.clone(),
+                let chunk = commands.spawn((
+                    Mesh3d(chunk_mesh_handle),
+                    Transform::from_xyz((coord.0 * 32) as f32, 0., (coord.1 * 32) as f32),
                     MeshMaterial3d(stone.clone()),
                     CustomUV,
                 )).id();
 
-                rendered_chunks.0.insert(*coord, chunk_entity);
+
+                rendered_chunks.0.insert(*coord, chunk);
             }
         }
 
