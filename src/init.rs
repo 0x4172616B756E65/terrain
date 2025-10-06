@@ -42,11 +42,11 @@ fn init_resources(mut commands: Commands, perlin: Res<Perlin>, mut meshes: ResMu
 fn setup_scene(mut commands: Commands) {
     let light_transform = Transform::from_xyz(4096., 1024., 4096.).looking_at(Vec3::new(4096., 0., 4096.), Vec3::Y);
 
-    commands.spawn((DirectionalLight {
+    /*commands.spawn((DirectionalLight {
         illuminance: OVERCAST_DAY, 
         ..Default::default()
     }, light_transform));
-
+    */
     commands.spawn((
         Text::new(""),
         Node {
@@ -73,7 +73,7 @@ fn load_map(
     let stone = materials.add(StandardMaterial { base_color: GREEN_200.into(), perceptual_roughness: 0.5, ..default() });
     
     for CurrentChunk((cx, cy)) in events.read() {
-        let load_raw: HashSet<(i32, i32)> = get_render_radius(*cx, *cy, render_distance.0).iter().cloned().collect();
+        let load_raw: HashSet<(i32, i32)> = get_circle_area(*cx, *cy, render_distance.0).iter().cloned().collect();
 
 
         for coord in previous_radius.0.difference(&load_raw) {
@@ -104,7 +104,7 @@ fn load_map(
     if render_distance.is_changed() {
         let (cx, cy) = player.current_chunk.0;
         let load_raw: HashSet<(i32, i32)> = 
-            get_render_radius(cx, cy, render_distance.0).iter().cloned().collect();
+            get_circle_area(cx, cy, render_distance.0).iter().cloned().collect();
 
         for coord in previous_radius.0.difference(&load_raw) {
             if let Some(entity) = rendered_chunks.0.remove(coord) {
@@ -131,7 +131,7 @@ fn load_map(
     }
 }
 
-pub fn get_render_radius(cx: i32, cy: i32, radius: i32) -> Vec<(i32, i32)> {
+pub fn get_circle_area(cx: i32, cy: i32, radius: i32) -> Vec<(i32, i32)> {
         let mut chunks = Vec::with_capacity((radius * 2 + 1).pow(2) as usize);
         let radius_sq = radius * radius;
 

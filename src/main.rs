@@ -1,7 +1,7 @@
 use bevy::{color::palettes::{css::WHITE, tailwind::GREEN_500}, diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, log::tracing_subscriber, pbr::light_consts::lux::{FULL_DAYLIGHT}};
 use bevy::prelude::*;
 use bevy_rapier3d::{plugin::{NoUserData, RapierPhysicsPlugin}, prelude::{Collider, KinematicCharacterController}, render::RapierDebugRenderPlugin};
-use terrain::{init::Init, noise::perlin::Perlin, player::{cursor::CursorPlugin, inventory::inventory::InventoryPlugin, player::{Player, PlayerPlugin}}, simulation::physics::BallisticsPlugin, terrain::{chunks::{Chunkbase, RenderDistance, RenderedChunks}, grid::{ChunkRadius, CurrentChunk, GridPlugin}}};
+use terrain::{init::Init, noise::perlin::Perlin, player::{cursor::CursorPlugin, inventory::inventory::InventoryPlugin, player::{Player, PlayerPlugin}}, simulation::{physics::BallisticsPlugin, sun::DaylightCyclePlugin}, terrain::{chunks::{Chunkbase, RenderDistance, RenderedChunks}, grid::{ChunkRadius, CurrentChunk, GridPlugin}}};
 use std::collections::HashSet;
 
 
@@ -17,6 +17,7 @@ fn main() {
         .add_plugins(GridPlugin)
         .add_plugins(BallisticsPlugin)
         .add_plugins(InventoryPlugin)
+        .add_plugins(DaylightCyclePlugin)
         .add_plugins(FrameTimeDiagnosticsPlugin::default()) 
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugins(RapierDebugRenderPlugin::default())

@@ -38,6 +38,7 @@ pub mod terrain {
 }
 
 pub mod simulation {
+    pub mod sun;
     pub mod physics;
     pub mod ballistics {
         pub mod ammunition;
