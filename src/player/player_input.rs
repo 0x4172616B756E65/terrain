@@ -1,7 +1,7 @@
 use bevy::{input::mouse::MouseWheel, prelude::*};
 use bevy_rapier3d::prelude::{KinematicCharacterController, KinematicCharacterControllerOutput};
 
-use crate::{player::{camera_controller::CameraController, player::Player, player_attack::DebugShootEvent, config::player_config::{InputBinding, PlayerAction::{self, *}}}, terrain::chunks::RenderDistance};
+use crate::{player::{camera_controller::CameraController, config::player_config::{InputBinding, PlayerAction::{self, *}}, player::Player, player_attack::DebugShootEvent}, simulation::world::{WorldState, GRAVITY}, terrain::chunks::RenderDistance};
 
 pub fn handle_player_input(
     mut player_query: Query<(&mut Player, &Transform)>, 
@@ -43,7 +43,9 @@ pub fn handle_player_input(
             DebugShootBullet => { let _ = debug_shoot.write(DebugShootEvent((*transform, forwards))); }, 
 
             DebugIncreaseRenderDistance => render_distance.0 += 1,
-            DebugDecreaseRenderDistance => render_distance.0 -= 1,
+            DebugDecreaseRenderDistance => { render_distance.0 = render_distance.0.saturating_sub(1) },
+
+            DebugToggleFlight => player.state.debug_flying ^= true,
             _ => {}
         }
     };
@@ -75,33 +77,49 @@ pub fn handle_player_input(
     }
 }
 
-pub fn apply_movement(
-    time: Res<Time<Fixed>>, 
+pub fn apply_player_movement(
+    time: Res<Time<Fixed>>,
     camera_query: Query<&CameraController>,
     player_query: Query<(
-        &mut Player, 
-        &mut KinematicCharacterController, 
+        &mut Player,
+        &mut KinematicCharacterController,
         Option<&KinematicCharacterControllerOutput>
-    )> ) {
+    )>,
+    world_state: Res<WorldState>,
+) {
     let camera = camera_query.single().unwrap();
 
-    for (mut player, mut controller, _controller_output) in player_query {
-        let camera_rotation_converted = -camera.rotation.y.to_radians() - 90_f32.to_radians();
-        let forwards = Vec3::new(f32::cos(camera_rotation_converted), 0.0, f32::sin(camera_rotation_converted));
-        let rightwards = Vec3::new(-forwards.z, 0.0, forwards.x);
+    let yaw_radians = -camera.rotation.y.to_radians() - 90_f32.to_radians();
+    let camera_forward = Vec3::new(f32::cos(yaw_radians), 0.0, f32::sin(yaw_radians));
+    let camera_right = Vec3::new(-camera_forward.z, 0.0, camera_forward.x);
 
+    for (mut player, mut controller, output) in player_query {
         let mut movement = Vec3::ZERO;
-        movement += forwards * player.direction.x;
-        movement += rightwards * player.direction.z;
+        let delta = time.timestep().as_secs_f32();
+        movement += camera_forward * player.direction.x;
+        movement += camera_right * player.direction.z;
+
         movement.y += player.direction.y;
 
         if movement.length_squared() > 0.0 {
             movement = movement.normalize() * player.speed * player.speed_multiplier;
             player.momentum = movement;
-        } else {
-            player.momentum = Vec3::ZERO;
         }
 
-        controller.translation = Some(player.momentum * time.timestep().as_secs_f32());
+
+        if player.state.debug_flying {
+            if player.direction.y != 0.0 {
+                player.momentum.y += player.direction.y * delta;
+            }
+        } else if let Some(output) = output {
+            if !output.grounded { 
+                info!("Not grounded");
+                player.momentum.y -= GRAVITY * delta; 
+            } else if player.direction == Vec3::ZERO {
+                player.momentum = Vec3::ZERO;
+            }
+        }
+
+        controller.translation = Some(player.momentum * delta);
     }
 }

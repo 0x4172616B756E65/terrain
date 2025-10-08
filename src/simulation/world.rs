@@ -21,6 +21,7 @@ impl Plugin for BallisticsPlugin {
 #[derive(Resource)]
 pub struct WorldState {
     time: f32,
+    second_passed: bool,
     temperature: f32, 
 }
 
@@ -28,6 +29,7 @@ impl Default for WorldState {
     fn default() -> Self {
         WorldState { 
             time: 0.00,
+            second_passed: false,
             temperature: 20. 
         }
     }
@@ -41,10 +43,15 @@ impl WorldState {
     pub fn get_hour(&self) -> &f32 {
         &self.time
     }
+
+    pub fn second_passed(&self) -> bool {
+        self.second_passed
+    }
 }
 
 fn step_time(mut world_state: ResMut<WorldState>, time: Res<Time>) {
     world_state.time += time.delta_secs();
+    world_state.second_passed = (world_state.time % 1.0).ceil() as u8 == 0;
     if world_state.time > 24.0 {
         world_state.time = 0.0;
     }

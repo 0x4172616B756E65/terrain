@@ -1,14 +1,14 @@
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
-use crate::{player::{camera_controller::{update_camera_controller, CameraController}, player_attack::debug_shoot_bullet, player_input::{apply_movement, handle_player_input}, config::player_config::PlayerConfig}, terrain::grid::CurrentChunk};
+use crate::{player::{camera_controller::{update_camera_controller, CameraController}, config::player_config::PlayerConfig, player_attack::debug_shoot_bullet, player_input::{apply_player_movement, handle_player_input}, player_state::PlayerState}, terrain::grid::CurrentChunk};
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app
             .add_systems(Startup, spawn_player)
-            .add_systems(FixedUpdate, apply_movement.in_set(PhysicsSet::Writeback))
+            .add_systems(FixedUpdate, apply_player_movement.in_set(PhysicsSet::Writeback))
             .add_systems(Update, (update_camera_controller, handle_player_input, debug_shoot_bullet));
     }
 }
@@ -25,8 +25,8 @@ pub struct Player {
     pub direction: Vec3,
 
     pub current_chunk: CurrentChunk,
-    pub config: PlayerConfig
-    //pub state: PlayerState
+    pub config: PlayerConfig,
+    pub state: PlayerState,
 }
 
 impl Default for Player {
@@ -36,13 +36,14 @@ impl Default for Player {
 
             //Physics/motion
             gravity: 9.8, // m/s
-            speed: 500_f32, // Km/h, douvle for running
+            speed: 5_f32, // Km/h, douvle for running
             speed_multiplier: 2_f32,
             direction: Vec3::ZERO,
             momentum: Vec3::ZERO, 
 
             current_chunk: CurrentChunk((0, 0)),
-            config: PlayerConfig::default()
+            config: PlayerConfig::default(),
+            state: PlayerState::default(),
         }
         
     }
@@ -51,7 +52,7 @@ impl Default for Player {
 fn spawn_player(mut commands: Commands) {
     let camera_entity = commands.spawn((
         Camera3d::default(), 
-        Transform::from_xyz(0., 0., 0.),
+        Transform::from_xyz(0., 0.9, 0.),
         Projection::from(PerspectiveProjection {
             fov: 120_f32,
             ..default()

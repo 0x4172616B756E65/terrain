@@ -1,11 +1,7 @@
-use std::collections::HashSet;
-#[cfg(feature = "debug")]
-use std::time::Instant;
-
-use bevy::{app::Plugin, color::palettes::tailwind::GREEN_200, pbr::light_consts::lux::OVERCAST_DAY, prelude::*, tasks::{block_on, AsyncComputeTaskPool}};
+use bevy::{app::Plugin,  prelude::*, tasks::{block_on, }};
 use bevy_rapier3d::prelude::Collider;
 
-use crate::{noise::perlin::Perlin, player::{camera_controller::CameraController, player::Player}, simulation::physics::WorldState, terrain::{chunks::{Chunkbase, RenderDistance, RenderedChunks}, grid::{ChunkRadius, CurrentChunk}}};
+use crate::{noise::perlin::Perlin, player::{camera_controller::CameraController,}, simulation::world::WorldState, terrain::{chunks::{Chunkbase, RenderDistance, RenderedChunks}, grid::{ChunkRadius, }}};
 
 #[derive(Component)]
 pub struct DebugText;
@@ -31,10 +27,7 @@ impl Plugin for Init {
 fn init_resources(mut commands: Commands, perlin: Res<Perlin>) {
     let chunkbase: Chunkbase = Chunkbase::new(&perlin);
 
-    #[cfg(feature = "debug")]
-    info!("Time to load chunkbase: {:?}\n Current chunks: {}", start.elapsed(), 16_000);
-
-    commands.spawn(Collider::cuboid(8192., 0., 8192.));
+    //commands.spawn(Collider::cuboid(8192., 0., 8192.));
     commands.insert_resource(chunkbase);
 }
 

@@ -1,6 +1,6 @@
 use bevy::{color::palettes::css::WHITE, pbr::light_consts::lux::FULL_DAYLIGHT, prelude::*};
 
-use crate::simulation::physics::WorldState;
+use crate::simulation::world::WorldState;
 
 pub struct DaylightCyclePlugin;
 

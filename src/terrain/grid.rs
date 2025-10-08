@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use bevy::prelude::*;
+use bevy_rapier3d::prelude::*;
 
 use crate::{player::player::Player, terrain::chunks::{Chunkbase, RenderDistance, RenderedChunks, CHUNK_HEIGHT, CHUNK_WIDTH}};
 
@@ -66,10 +67,6 @@ fn load_map(
     let red = materials.add(StandardMaterial { base_color: Color::srgb_u8(180, 20, 20), perceptual_roughness: 0.5, ..default() });
     
     let mut update_chunks = |load_raw: HashSet<((i32, i32), u32)>| {
-        info!("Prev: {:?}", render_radius.0);
-        info!("New: {:?}", load_raw);
-        info!("Chunks to update: {}", load_raw.difference(&render_radius.0).count());
-
         for chunk_info in render_radius.0.difference(&load_raw) {
             if let Some(entity) = rendered_chunks.0.remove(&chunk_info.0) {
                 commands.entity(entity).despawn();
@@ -78,11 +75,28 @@ fn load_map(
 
         for chunk_info in load_raw.difference(&render_radius.0) {
             if let Some(chunk) = chunkbase.get_chunk(&chunk_info.0) {
-                let chunk_entity = commands.spawn(match chunk_info.1 { 
-                    0 => (Mesh3d(meshes.add(chunk.mesh.clone())), MeshMaterial3d(green.clone()), chunk.transform), 
-                    2 => (Mesh3d(meshes.add(chunk.mesh_2.clone())),MeshMaterial3d(yellow.clone()), chunk.transform), 
-                    _ => (Mesh3d(meshes.add(chunk.mesh_4.clone())), MeshMaterial3d(red.clone()), chunk.transform), 
-                }).id();
+                let chunk_entity;
+                if chunk_info.1 == 0 {
+                    chunk_entity = commands.spawn((
+                        Mesh3d(meshes.add(chunk.mesh.clone())), 
+                        MeshMaterial3d(green.clone()), 
+                        RigidBody::Fixed,
+                        chunk.transform,
+                    )).with_child((chunk.collider.clone(), Transform::from_xyz(64.0, 0.0, 64.0).with_rotation(Quat::from_rotation_y(180_f32.to_radians())))).id();
+                } else if chunk_info.1 == 2 {
+                    chunk_entity = commands.spawn((
+                        Mesh3d(meshes.add(chunk.mesh_2.clone())),
+                        MeshMaterial3d(yellow.clone()),
+                        chunk.transform, 
+                    )).id();
+                }
+                else { 
+                    chunk_entity = commands.spawn((
+                        Mesh3d(meshes.add(chunk.mesh_4.clone())),
+                        MeshMaterial3d(red.clone()),
+                        chunk.transform,
+                    )).id();
+                }
 
                 rendered_chunks.0.insert(chunk_info.0, chunk_entity);
             }
@@ -92,7 +106,7 @@ fn load_map(
     };
 
     for CurrentChunk((cx, cy)) in events.read() {
-        let load_raw: HashSet<((i32, i32), u32)> = get_circle_area(*cx, *cy, render_distance.0, player.config.lod_radius).iter().cloned().collect();
+        let load_raw: HashSet<((i32, i32), u32)> = get_circle_area(*cx, *cy, render_distance.0 as i32, player.config.lod_radius).iter().cloned().collect();
 
         update_chunks(load_raw);
 
@@ -101,7 +115,7 @@ fn load_map(
 
     if render_distance.is_changed() {
         let (cx, cy) = player.current_chunk.0;
-        let load_raw: HashSet<((i32, i32), u32)> = get_circle_area(cx, cy, render_distance.0, player.config.lod_radius).iter().cloned().collect();
+        let load_raw: HashSet<((i32, i32), u32)> = get_circle_area(cx, cy, render_distance.0 as i32, player.config.lod_radius).iter().cloned().collect();
 
         update_chunks(load_raw);
     }

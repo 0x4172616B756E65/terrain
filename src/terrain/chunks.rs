@@ -1,16 +1,11 @@
-use std::time::Duration;
-#[cfg(feature = "debug")]
-use std::time::Instant;
 use std::{collections::HashMap};
 
 use bevy::prelude::*;
 use bevy::{asset::RenderAssetUsages, ecs::{bundle::Bundle, entity::Entity, resource::Resource}, render::mesh::{Indices, Mesh, PrimitiveTopology}, tasks::block_on};
 use bevy_rapier3d::prelude::Collider;
 use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator};
-#[cfg(feature = "debug")]
-use tracing::info;
 
-use crate::noise::{perlin::Perlin, perlin_cpu::PerlinCPU};
+use crate::noise::{perlin::Perlin};
 
 pub const MAP_WIDTH: usize = 32;
 pub const MAP_HEIGHT: usize = 32;
@@ -24,7 +19,7 @@ pub struct Chunkbase(HashMap<(i32, i32), Chunk>);
 pub struct RenderedChunks(pub HashMap<(i32, i32), Entity>);
 
 #[derive(Resource)]
-pub struct RenderDistance(pub i32);
+pub struct RenderDistance(pub u32);
 
 
 impl Chunkbase { 
@@ -82,7 +77,7 @@ impl Chunkbase {
                 let mesh_4 = chunk_data_4.into_mesh_with_normals();
 
                 let flat_slice = slice.iter().flat_map(|row| row.iter().copied()).collect();
-                let collider = Collider::heightfield(flat_slice, CHUNK_WIDTH, CHUNK_HEIGHT, Vec3::ONE);
+                let collider = generate_heightfield(flat_slice, 16);
                 let chunk = Chunk { 
                     transform: Transform::from_xyz((x * CHUNK_WIDTH) as f32, 0., (y * CHUNK_HEIGHT) as f32), 
                     collider: collider,
@@ -100,6 +95,18 @@ impl Chunkbase {
     pub fn get_chunk(&self, coordinates: &(i32, i32)) -> Option<&Chunk> {
         self.0.get(coordinates)
     }
+
+}
+
+fn generate_heightfield(heightmap: Vec<f32>, lod: usize) -> Collider {
+    let mut heightfield = Vec::with_capacity(CHUNK_HEIGHT / lod + CHUNK_WIDTH / lod);
+    for y in (0..CHUNK_HEIGHT).step_by(lod) {
+        for x in (0..CHUNK_WIDTH).step_by(lod) {
+            heightfield.push((heightmap[y * CHUNK_WIDTH + x] + 1.0).powi(4) * 30.0);
+        }
+    }
+
+    Collider::heightfield(heightfield, CHUNK_HEIGHT / lod, CHUNK_WIDTH/ lod, Vec3::new(CHUNK_HEIGHT as f32, 1.0, CHUNK_WIDTH as f32))
 }
 
 pub struct ChunkData {

@@ -16,7 +16,7 @@ impl Default for PlayerConfig {
     fn default() -> Self {
         PlayerConfig { 
             fov: 100., 
-            lod_radius: 4,
+            lod_radius: 1,
             render_radius: 64,
             keymap: [
                 (InputBinding::Key(KeyH.into()), MoveForwards),
@@ -32,7 +32,8 @@ impl Default for PlayerConfig {
 
                 (InputBinding::MouseButton(Left.into()), DebugShootBullet),
                 (InputBinding::MouseWheelUp, DebugIncreaseRenderDistance),
-                (InputBinding::MouseWheelDown, DebugDecreaseRenderDistance)
+                (InputBinding::MouseWheelDown, DebugDecreaseRenderDistance),
+                (InputBinding::Key(KeyX.into()), DebugToggleFlight),
 
             ].iter().cloned().collect(),
         }
@@ -70,6 +71,7 @@ pub enum PlayerAction {
     DebugShootBullet,
     DebugIncreaseRenderDistance,
     DebugDecreaseRenderDistance,
+    DebugToggleFlight,
 }
 
 

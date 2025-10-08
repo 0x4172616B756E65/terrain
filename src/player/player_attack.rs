@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use bevy::ecs::event::{Event, EventReader};
 
 use crate::simulation::ballistics::ammunition::Bullet;
-use crate::simulation::physics::WorldState;
+use crate::simulation::world::WorldState;
 
 #[derive(Event)]
 pub struct DebugShootEvent(pub (Transform, Vec3));

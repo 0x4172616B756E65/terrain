@@ -1,6 +1,6 @@
 use bevy::{ecs::component::Component, math::Vec3};
 
-use crate::simulation::physics::{WorldState, GRAVITY};
+use crate::simulation::world::{WorldState, GRAVITY};
 
 #[derive(Component, Debug)]
 pub struct Bullet {
