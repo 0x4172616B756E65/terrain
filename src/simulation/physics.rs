@@ -14,34 +14,43 @@ impl Plugin for BallisticsPlugin {
     fn build(&self, app: &mut bevy::app::App) {
         app
             .add_event::<DebugShootEvent>()
-            .add_systems(Update, update_projectiles);
+            .add_systems(Update, (step_time, step_projectiles));
     }
 }
 
 #[derive(Resource)]
 pub struct WorldState {
+    time: f32,
     temperature: f32, 
 }
 
 impl Default for WorldState {
     fn default() -> Self {
-        WorldState { temperature: 20. }
+        WorldState { 
+            time: 0.00,
+            temperature: 20. 
+        }
     }
 }
 
 impl WorldState {
-    pub fn new() -> Self {
-        WorldState { 
-            temperature: 20_f32
-        }
-    }
-
     pub fn get_air_density(&self) -> f32 {
         AIR_PRESSURE / (AIR_CONSTANT * (273.15 + &self.temperature))
     }
+
+    pub fn get_hour(&self) -> &f32 {
+        &self.time
+    }
 }
 
-fn update_projectiles(
+fn step_time(mut world_state: ResMut<WorldState>, time: Res<Time>) {
+    world_state.time += time.delta_secs();
+    if world_state.time > 24.0 {
+        world_state.time = 0.0;
+    }
+}
+
+fn step_projectiles(
     time: Res<Time>,
     mut projectiles: Query<(&mut Bullet, &mut Transform)>
 ) {
