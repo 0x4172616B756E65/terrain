@@ -1,5 +1,3 @@
-use std::{f32::consts::PI, time::SystemTime};
-
 use bevy::{color::palettes::css::WHITE, pbr::light_consts::lux::FULL_DAYLIGHT, prelude::*};
 
 use crate::simulation::physics::WorldState;

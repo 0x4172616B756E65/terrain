@@ -113,14 +113,11 @@ impl Chunk {
 
 impl ChunkData {
     pub fn new(heightmap: &[[f32; 32]; 32], halo: &[f32; CHUNK_HEIGHT + CHUNK_WIDTH + 1]) -> Self {
-
-        let mut vertex_buffer: Vec<[f32; 3]> = Vec::with_capacity((CHUNK_WIDTH + 1) * (CHUNK_HEIGHT + 1));  
-        let mut index_buffer: Vec<u32> = Vec::with_capacity((CHUNK_WIDTH + CHUNK_HEIGHT) * 6);
-
-
-        for y in 0..=CHUNK_HEIGHT {
-            for x in 0..=CHUNK_WIDTH {
-                vertex_buffer.push([
+        let vertex_buffer: Vec<[f32; 3]> = (0..=32)
+            .into_par_iter()
+            .flat_map_iter(|y| (0..=32).map(move |x| (x, y)))
+            .map(|(x, y)| {
+                 [
                     x as f32,
                     match(y, x) {
                         (CHUNK_HEIGHT, CHUNK_WIDTH) => (halo[CHUNK_HEIGHT + CHUNK_WIDTH] + 1.0).powi(4),
@@ -129,61 +126,22 @@ impl ChunkData {
                         _ => (heightmap[y][x] + 1.0).powi(4)
                     },
                     y as f32
-                ]);
-            }
-        }
+                ]
+            }).collect();
 
-        for y in 0..CHUNK_HEIGHT as u32 {
-            for x in 0..CHUNK_WIDTH as u32 {
-                let stride = (CHUNK_WIDTH + 1) as u32;
-                let i0 = x + y * stride;
-                let i1 = i0 + 1;
-                let i2 = i0 + stride;
-                let i3 = i2 + 1;
+        let index_buffer: Vec<u32> = (0..CHUNK_HEIGHT)
+            .into_par_iter()
+            .flat_map_iter(|y| { 
+                (0..CHUNK_WIDTH).flat_map(move |x| {
+                    let stride = (CHUNK_WIDTH + 1) as u32;
+                    let i0 = x as u32 + y as u32 * stride;
+                    let i1 = i0 + 1;
+                    let i2 = i0 + stride;
+                    let i3 = i2 + 1;
 
-
-                index_buffer.push(i0);
-                index_buffer.push(i3);
-                index_buffer.push(i1);
-
-                index_buffer.push(i0);
-                index_buffer.push(i2);
-                index_buffer.push(i3);
-            }
-        }
-
-        ChunkData { vertex_buffer, index_buffer, }
-    }
-    pub fn new_cpu(chunk_x: i32, chunk_y: i32, perlin: &PerlinCPU) -> Self {
-        let mut vertex_buffer: Vec<[f32; 3]> = Vec::with_capacity(1024);  
-        let mut index_buffer: Vec<u32> = Vec::with_capacity(5766);
-
-        for y in 0..32 {
-            for x in 0..32 {
-                let fx = (x + chunk_x * 32) as f32 * perlin.scale;
-                let fy = (y + chunk_y * 32) as f32 * perlin.scale;
-                let z = (perlin.from_fractal(fx, fy) + 0.5).powi(4) * 10.;
-
-                vertex_buffer.push([(x + chunk_x * 32) as f32, z, (y + chunk_y * 32) as f32]);
-            }
-        }
-
-        for y in 0..31 {
-            for x in 0..31 {
-                let i0 = x + y * 32;
-                let i1 = i0 + 1;
-                let i2 = i0 + 32;
-                let i3 = i2 + 1;
-
-                index_buffer.push(i0);
-                index_buffer.push(i3);
-                index_buffer.push(i1);
-
-                index_buffer.push(i0);
-                index_buffer.push(i2);
-                index_buffer.push(i3);
-            }
-        }
+                    [i0, i3, i1, i0, i2, i3]
+                })
+            }).collect();
 
         ChunkData { vertex_buffer, index_buffer }
     }
@@ -203,4 +161,19 @@ impl ChunkData {
         mesh.compute_smooth_normals();
         mesh
     }
+}
+pub fn get_circle_area(cx: i32, cy: i32, radius: i32) -> Vec<(i32, i32)> {
+        let mut chunks = Vec::with_capacity((radius * 2 + 1).pow(2) as usize);
+        let radius_sq = radius * radius;
+
+        for y in -radius..=radius {
+            let y_sq = y * y;
+            for x in -radius..=radius {
+                if x * x + y_sq <= radius_sq {
+                    let chunk_coords = (cx.wrapping_add(x), cy.wrapping_add(y));
+                        chunks.push(chunk_coords);
+                }
+            }
+        }
+    chunks
 }

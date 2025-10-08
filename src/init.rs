@@ -15,19 +15,14 @@ impl Plugin for Init {
             .insert_resource(ChunkRadius::default())
             .insert_resource(RenderDistance(16))
             .insert_resource(RenderedChunks::default())
-            .insert_resource(PreviousRadius::default())
             .insert_resource(block_on(Perlin::new(1, 0.1)).unwrap())
             .insert_resource(WorldState::default())
             .add_systems(Startup, (init_resources, setup_scene))
-            .add_systems(Update, (load_map, update_compass));
+            .add_systems(Update, update_compass);
     }
 }
 
-#[derive(Resource, Default)]
-struct PreviousRadius(pub HashSet<(i32, i32)>);
 
-#[derive(Component)]
-struct CustomUV;
 
 #[derive(Component)]
 pub struct DebugText;
@@ -84,91 +79,5 @@ fn update_compass(mut compass_query: Query<&mut Text, With<Compass>>, camera_que
     compass.push_str(format!("{yaw}").as_str()); 
 }
 
-fn load_map(
-    chunkbase: Res<Chunkbase>,
-    render_distance: Res<RenderDistance>,
-    mut player_query: Query<&mut Player>,
-    mut commands: Commands,
-    mut previous_radius: ResMut<PreviousRadius>,
-    mut rendered_chunks: ResMut<RenderedChunks>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut events: EventReader<CurrentChunk>,
-) {
-    let mut player = player_query.single_mut().unwrap();
-    let stone = materials.add(StandardMaterial { base_color: GREEN_200.into(), perceptual_roughness: 0.5, ..default() });
-    
-    for CurrentChunk((cx, cy)) in events.read() {
-        let load_raw: HashSet<(i32, i32)> = get_circle_area(*cx, *cy, render_distance.0).iter().cloned().collect();
 
 
-        for coord in previous_radius.0.difference(&load_raw) {
-            if let Some(entity) = rendered_chunks.0.remove(coord) {
-                commands.entity(entity).despawn();
-            }
-        }
-
-        for coord in load_raw.difference(&previous_radius.0) {
-            if let Some(chunk) = chunkbase.get_chunk(coord) {
-
-                let chunk_entity = commands.spawn((
-                    Mesh3d(meshes.add(chunk.mesh.clone())),
-                    chunk.transform,
-                    //chunk.collider.clone(),
-                    MeshMaterial3d(stone.clone()),
-                    CustomUV,
-                )).id();
-
-                rendered_chunks.0.insert(*coord, chunk_entity);
-            }
-        }
-
-        previous_radius.0 = load_raw;
-        player.current_chunk = CurrentChunk((*cx, *cy));
-    }
-
-    if render_distance.is_changed() {
-        let (cx, cy) = player.current_chunk.0;
-        let load_raw: HashSet<(i32, i32)> = 
-            get_circle_area(cx, cy, render_distance.0).iter().cloned().collect();
-
-        for coord in previous_radius.0.difference(&load_raw) {
-            if let Some(entity) = rendered_chunks.0.remove(coord) {
-                commands.entity(entity).despawn();
-            }
-        }
-
-        for coord in load_raw.difference(&previous_radius.0) {
-            if let Some(chunk) = chunkbase.get_chunk(coord) {
-
-                let chunk_entity = commands.spawn((
-                    Mesh3d(meshes.add(chunk.mesh.clone())),
-                    chunk.transform,
-                    //chunk.collider.clone(),
-                    MeshMaterial3d(stone.clone()),
-                    CustomUV,
-                )).id();
-
-                rendered_chunks.0.insert(*coord, chunk_entity);
-            }
-        }
-
-        previous_radius.0 = load_raw;
-    }
-}
-
-pub fn get_circle_area(cx: i32, cy: i32, radius: i32) -> Vec<(i32, i32)> {
-        let mut chunks = Vec::with_capacity((radius * 2 + 1).pow(2) as usize);
-        let radius_sq = radius * radius;
-
-        for y in -radius..=radius {
-            let y_sq = y * y;
-            for x in -radius..=radius {
-                if x * x + y_sq <= radius_sq {
-                    let chunk_coords = (cx.wrapping_add(x), cy.wrapping_add(y));
-                        chunks.push(chunk_coords);
-                }
-            }
-        }
-    chunks
-}
