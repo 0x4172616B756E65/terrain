@@ -1,4 +1,4 @@
-use bevy::{color::palettes::css::WHITE, pbr::light_consts::lux::FULL_DAYLIGHT, prelude::*};
+use bevy::{color::palettes::css::{ALICE_BLUE, WHITE}, pbr::light_consts::lux::{FULL_DAYLIGHT, FULL_MOON_NIGHT}, prelude::*, reflect::DynamicTypePath};
 
 use crate::simulation::world::WorldState;
 
@@ -7,16 +7,20 @@ pub struct DaylightCyclePlugin;
 impl Plugin for DaylightCyclePlugin {
     fn build(&self, app: &mut App) {
         app
-            .add_systems(Startup, spawn_sun)
+            .add_systems(Startup, spawn_sun_and_moon)
             .add_systems(Update, cycle_daylight);
     }
 }
 
-#[derive(Debug, Bundle)]
+#[derive(Bundle)]
 pub struct Sun {
     pub transform: Transform,
-    pub light: DirectionalLight
+    pub light: DirectionalLight,
+    sun_comp: SunComp
 }
+
+#[derive(Component)]
+pub struct SunComp;
 
 impl Sun {
     pub fn new() -> Self {
@@ -26,26 +30,61 @@ impl Sun {
                 color: WHITE.into(), 
                 illuminance: FULL_DAYLIGHT, 
                 ..Default::default()
-            }
+            },
+            sun_comp: SunComp
         }
     }
 }
 
-fn spawn_sun(mut commands: Commands) {
-    commands.spawn(Sun::new()); 
+#[derive(Bundle)]
+pub struct Moon {
+    pub transform: Transform,
+    pub light: DirectionalLight,
+    moon_comp: MoonComp
 }
 
-fn cycle_daylight(world_state: ResMut<WorldState>, mut sun_query: Query<(&mut DirectionalLight, &mut Transform)>) {
-    let (mut sunlight, mut sun_transform) = sun_query.single_mut().unwrap();
+#[derive(Component)]
+pub struct MoonComp;
+
+impl Moon {
+    pub fn new() -> Self {
+        Moon {
+            transform: Transform::from_xyz(0., 0., 0.),
+            light: DirectionalLight {
+                color: ALICE_BLUE.into(),
+                illuminance: FULL_MOON_NIGHT,
+                ..Default::default()
+            },
+            moon_comp: MoonComp
+        }
+    }
+}
+
+fn spawn_sun_and_moon(mut commands: Commands) {
+    //commands.spawn(Sun::new()); 
+    commands.spawn(Moon::new()); 
+}
+
+fn cycle_daylight(
+    world_state: ResMut<WorldState>, 
+    mut celestial_query: ParamSet<(
+        Query<(&mut DirectionalLight, &mut Transform), With<SunComp>>,
+        Query<(&mut DirectionalLight, &mut Transform), With<MoonComp>>,
+    )>,
+) {
     let hour = world_state.get_hour();
-
-    let color = kelvin_to_rgb(bell_kelvin(hour));
-    sunlight.color = Color::srgb_u8(color.0, color.1, color.2);
-
     let th = ((*hour + 5.0) * 15.0).to_radians();
-    let q = Quat::from_rotation_x(th);
+    let qrot = Quat::from_rotation_x(th);
+    let color = kelvin_to_rgb(bell_kelvin(hour)); 
 
-    sun_transform.rotation = q;
+    let mut sun = celestial_query.p0();
+    let (mut sun_light, mut sun_rotation) = sun.single_mut().unwrap();
+        sun_light.color = Color::srgb_u8(color.0, color.1, color.2);
+        sun_rotation.rotation = qrot;
+
+    let mut moon = celestial_query.p1();
+    let (_, mut moon_rotation) = moon.single_mut().unwrap();
+        moon_rotation.rotation = -qrot;
 }
 
 fn bell_kelvin(x: &f32) -> f32 {
