@@ -2,9 +2,9 @@ use std::{env, fs::File, io::{BufReader, Write}, path::PathBuf};
 
 use bevy::ecs::system::Query;
 
-use crate::player::{player::Player, state::player_state::PlayerState};
+use crate::player::{player::Player, config::player_config::PlayerConfig};
 
-fn _read_player_state() -> PlayerState {
+fn _read_player_state() -> PlayerConfig {
     let mut path = PathBuf::from(env::var("HOME").unwrap());
         path.push(".local/share/player_config.json");
 
@@ -18,7 +18,7 @@ fn _write_player_state(player_query: Query<&Player>) {
     let mut path = PathBuf::from(env::var("HOME").unwrap());
         path.push(".local/share/player_config.json");
 
-    let player_state: &PlayerState = &player_query.single().unwrap().state;
+    let player_state: &PlayerConfig = &player_query.single().unwrap().config;
     let json = serde_json::to_string_pretty(player_state).unwrap();
     let mut file = File::create(path).unwrap();
 

@@ -12,9 +12,9 @@ pub mod player {
         pub mod inventory;
         pub mod items;
     }
-    pub mod state {
+    pub mod config {
         pub mod serde;
-        pub mod player_state;
+        pub mod player_config;
         pub mod serde_keyboard;
         pub mod serde_mouse;
     }

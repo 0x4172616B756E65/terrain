@@ -1,7 +1,7 @@
 use bevy::{input::mouse::MouseWheel, prelude::*};
 use bevy_rapier3d::prelude::{KinematicCharacterController, KinematicCharacterControllerOutput};
 
-use crate::{player::{camera_controller::CameraController, player::Player, player_attack::DebugShootEvent, state::player_state::{InputBinding, PlayerAction::{self, *}}}, terrain::chunks::RenderDistance};
+use crate::{player::{camera_controller::CameraController, player::Player, player_attack::DebugShootEvent, config::player_config::{InputBinding, PlayerAction::{self, *}}}, terrain::chunks::RenderDistance};
 
 pub fn handle_player_input(
     mut player_query: Query<(&mut Player, &Transform)>, 
@@ -24,7 +24,7 @@ pub fn handle_player_input(
         pitch.cos() * yaw.sin(),
     );
 
-    let keymap = player.state.keymap.clone();
+    let keymap = player.config.keymap.clone();
     player.direction = Vec3::ZERO;
     player.speed_multiplier = 1.0;
 

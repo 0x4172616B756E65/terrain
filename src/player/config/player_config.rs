@@ -1,19 +1,23 @@
 use std::collections::HashMap;
 
-use crate::player::state::{player_state::PlayerAction::*, serde_keyboard::SerdeKeyCode, serde_mouse::SerdeMouseCode};
+use crate::player::config::{player_config::PlayerAction::*, serde_keyboard::SerdeKeyCode, serde_mouse::SerdeMouseCode};
 use bevy::input::{keyboard::KeyCode::*, mouse::MouseButton::*};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct PlayerState {
+pub struct PlayerConfig {
     pub fov: f32,
+    pub lod_radius: u32,
+    pub render_radius: u32,
     pub keymap: HashMap<InputBinding, PlayerAction>,
 }
 
-impl Default for PlayerState {
+impl Default for PlayerConfig {
     fn default() -> Self {
-        PlayerState { 
+        PlayerConfig { 
             fov: 100., 
+            lod_radius: 4,
+            render_radius: 64,
             keymap: [
                 (InputBinding::Key(KeyH.into()), MoveForwards),
                 (InputBinding::Key(KeyS.into()), MoveLeftwards),

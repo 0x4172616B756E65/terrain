@@ -21,7 +21,7 @@ impl Plugin for Init {
             .insert_resource(ChunkRadius::default())
             .insert_resource(RenderDistance(16))
             .insert_resource(RenderedChunks::default())
-            .insert_resource(block_on(Perlin::new(1, 0.1)).unwrap())
+            .insert_resource(block_on(Perlin::new(1, 0.001)).unwrap())
             .insert_resource(WorldState::default())
             .add_systems(Startup, (init_resources, setup_scene))
             .add_systems(Update, update_compass);

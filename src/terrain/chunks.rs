@@ -1,3 +1,4 @@
+use std::time::Duration;
 #[cfg(feature = "debug")]
 use std::time::Instant;
 use std::{collections::HashMap};
@@ -72,15 +73,22 @@ impl Chunkbase {
                     halo[CHUNK_HEIGHT + CHUNK_WIDTH] = chunkmap[(x + 1) + ((y + 1) * MAP_WIDTH)][0][0]; 
                 }
 
-                let mut chunk_data = ChunkData::new(slice, &halo);
+                let mut chunk_data = ChunkData::new(slice, &halo, 1);
+                let mut chunk_data_2 = ChunkData::new(slice, &halo, 2);
+                let mut chunk_data_4 = ChunkData::new(slice, &halo, 4);
+
                 let mesh = chunk_data.into_mesh_with_normals();
+                let mesh_2 = chunk_data_2.into_mesh_with_normals();
+                let mesh_4 = chunk_data_4.into_mesh_with_normals();
 
                 let flat_slice = slice.iter().flat_map(|row| row.iter().copied()).collect();
                 let collider = Collider::heightfield(flat_slice, CHUNK_WIDTH, CHUNK_HEIGHT, Vec3::ONE);
                 let chunk = Chunk { 
                     transform: Transform::from_xyz((x * CHUNK_WIDTH) as f32, 0., (y * CHUNK_HEIGHT) as f32), 
                     collider: collider,
-                    mesh: mesh,
+                    mesh,
+                    mesh_2,
+                    mesh_4
                 };
 
                 ((x as i32, y as i32), chunk)
@@ -104,6 +112,8 @@ pub struct Chunk {
     pub transform: Transform,
     pub collider: Collider,
     pub mesh: Mesh,
+    pub mesh_2: Mesh,
+    pub mesh_4: Mesh,
 }
 
 impl Chunk {
@@ -112,38 +122,92 @@ impl Chunk {
 }
 
 impl ChunkData {
-    pub fn new(heightmap: &[[f32; CHUNK_WIDTH]; CHUNK_HEIGHT], halo: &[f32; CHUNK_HEIGHT + CHUNK_WIDTH + 1]) -> Self {
-        let vertex_buffer: Vec<[f32; 3]> = (0..=CHUNK_HEIGHT)
-            .into_par_iter()
-            .flat_map_iter(|y| (0..=CHUNK_WIDTH).map(move |x| (x, y)))
-            .map(|(x, y)| {
-                 [
-                    x as f32,
-                    match(y, x) {
-                        (CHUNK_HEIGHT, CHUNK_WIDTH) => (halo[CHUNK_HEIGHT + CHUNK_WIDTH] + 1.0).powi(4),
-                        (_, CHUNK_WIDTH) => (halo[y + CHUNK_WIDTH] + 1.0).powi(4),
-                        (CHUNK_HEIGHT, _) => (halo[x] + 1.0).powi(4),
-                        _ => (heightmap[y][x] + 1.0).powi(4)
-                    },
-                    y as f32
-                ]
-            }).collect();
+    pub fn new(heightmap: &[[f32; CHUNK_WIDTH]; CHUNK_HEIGHT], halo: &[f32; CHUNK_HEIGHT + CHUNK_WIDTH + 1], lod: usize) -> Self {
+        match lod {
+            1 => {
+                let vertex_buffer: Vec<[f32; 3]> = (0..=CHUNK_HEIGHT)
+                    .into_par_iter()
+                    .flat_map_iter(|y| (0..=CHUNK_WIDTH).map(move |x| (x, y)))
+                    .map(|(x, y)| {
+                        [
+                            x as f32,
+                            match(y, x) {
+                                (CHUNK_HEIGHT, CHUNK_WIDTH) => (halo[CHUNK_HEIGHT + CHUNK_WIDTH] + 1.0).powi(4) * 30.,
+                                (_, CHUNK_WIDTH) => (halo[y + CHUNK_WIDTH] + 1.0).powi(4) * 30.,
+                                (CHUNK_HEIGHT, _) => (halo[x] + 1.0).powi(4) * 30.,
+                                _ => (heightmap[y][x] + 1.0).powi(4) * 30.,
+                            },
+                            y as f32
+                        ]
+                    }).collect();
 
-        let index_buffer: Vec<u32> = (0..CHUNK_HEIGHT)
-            .into_par_iter()
-            .flat_map_iter(|y| { 
-                (0..CHUNK_WIDTH).flat_map(move |x| {
-                    let stride = (CHUNK_WIDTH + 1) as u32;
-                    let i0 = x as u32 + y as u32 * stride;
-                    let i1 = i0 + 1;
-                    let i2 = i0 + stride;
-                    let i3 = i2 + 1;
+                let index_buffer: Vec<u32> = (0..CHUNK_HEIGHT)
+                    .into_par_iter()
+                    .flat_map_iter(|y| { 
+                        (0..CHUNK_WIDTH).flat_map(move |x| {
+                            let stride = (CHUNK_WIDTH + 1) as u32;
+                            let i0 = x as u32 + y as u32 * stride;
+                            let i1 = i0 + 1;
+                            let i2 = i0 + stride;
+                            let i3 = i2 + 1;
 
-                    [i0, i3, i1, i0, i2, i3]
-                })
-            }).collect();
+                            [i0, i3, i1, i0, i2, i3]
+                        })
+                    }).collect();
 
-        ChunkData { vertex_buffer, index_buffer }
+                ChunkData { vertex_buffer, index_buffer }
+            },
+            lod => {
+                let mut vertex_buffer: Vec<[f32; 3]> = Vec::new();
+                let mut index_buffer: Vec<u32> = Vec::new();
+
+                let lod_height = CHUNK_HEIGHT / lod;
+                let lod_width = CHUNK_WIDTH / lod;
+
+                for y in 0..=lod_height {
+                    for x in 0..=lod_width {
+                        vertex_buffer.push([
+                            (x * lod) as f32,
+                            match(y, x) {
+                                _ if y == lod_height && x == lod_width => (halo[CHUNK_HEIGHT + CHUNK_WIDTH] + 1.0).powi(4) * 30.,
+                                _ if x == lod_width => (halo[y * lod + CHUNK_WIDTH] + 1.0).powi(4) * 30.,
+                                _ if y == lod_height => (halo[x * lod] + 1.0).powi(4) * 30.,
+                                _ => (heightmap[y.saturating_sub(1) * lod][x.saturating_sub(1) * lod] + 1.0).powi(4) * 30.
+                            },
+                            (y * lod) as f32
+                        ]);
+                    }
+                }
+
+                //info!("Vertex buffer length: {}", vertex_buffer.len());
+                //std::thread::sleep(Duration::new(4, 0));
+
+                for y in 0..lod_height as u32 {
+                    for x in 0..lod_width as u32 {
+                        let stride = lod_width as u32;
+                        let i0 = x + y * stride;
+                        let i1 = i0 + 1;
+                        let i2 = i0 + stride;
+                        let i3 = i2 + 1;
+
+
+                        index_buffer.push(i0);
+                        index_buffer.push(i3);
+                        index_buffer.push(i1);
+
+                        index_buffer.push(i0);
+                        index_buffer.push(i2);
+                        index_buffer.push(i3);
+                    }
+                }
+
+                //let expected_len = lod_height * lod_width * 6;
+                //info!("Index buffer length: {}, Expected length: {}", index_buffer.len(), expected_len);
+                //std::thread::sleep(Duration::new(4, 0));
+
+                ChunkData { vertex_buffer, index_buffer, }
+            }
+        }
     }
 
     pub fn into_mesh(&mut self) -> Mesh {

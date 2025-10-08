@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
-use crate::{player::{camera_controller::{update_camera_controller, CameraController}, player_attack::debug_shoot_bullet, player_input::{apply_movement, handle_player_input}, state::player_state::PlayerState}, terrain::grid::CurrentChunk};
+use crate::{player::{camera_controller::{update_camera_controller, CameraController}, player_attack::debug_shoot_bullet, player_input::{apply_movement, handle_player_input}, config::player_config::PlayerConfig}, terrain::grid::CurrentChunk};
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
@@ -25,7 +25,8 @@ pub struct Player {
     pub direction: Vec3,
 
     pub current_chunk: CurrentChunk,
-    pub state: PlayerState
+    pub config: PlayerConfig
+    //pub state: PlayerState
 }
 
 impl Default for Player {
@@ -41,7 +42,7 @@ impl Default for Player {
             momentum: Vec3::ZERO, 
 
             current_chunk: CurrentChunk((0, 0)),
-            state: PlayerState::default()
+            config: PlayerConfig::default()
         }
         
     }
