@@ -42,7 +42,7 @@ fn spawn_sun(mut commands: Commands) {
     commands.spawn(Sun::new(Transform::from_xyz(1000., 1000., 1000.))); 
 }
 
-fn cycle_daylight(mut commands: Commands, time: Res<Time>, mut timer: ResMut<Timer>, mut sun_query: Query<&mut DirectionalLight>) {
+fn cycle_daylight(time: Res<Time>, mut timer: ResMut<Timer>, mut sun_query: Query<&mut DirectionalLight>) {
     let mut sun = sun_query.single_mut().unwrap();
     timer.seconds_step += time.delta_secs();
     if timer.seconds_step >= 0.1 {
