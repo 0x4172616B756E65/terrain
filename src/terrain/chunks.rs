@@ -11,10 +11,10 @@ use tracing::info;
 
 use crate::noise::{perlin::Perlin, perlin_cpu::PerlinCPU};
 
-pub const MAP_WIDTH: usize = 128;
-pub const MAP_HEIGHT: usize = 128;
-pub const CHUNK_HEIGHT: usize = 32;
-pub const CHUNK_WIDTH: usize = 32;
+pub const MAP_WIDTH: usize = 32;
+pub const MAP_HEIGHT: usize = 32;
+pub const CHUNK_HEIGHT: usize = 128;
+pub const CHUNK_WIDTH: usize = 128;
 
 #[derive(Resource, Debug)]
 pub struct Chunkbase(HashMap<(i32, i32), Chunk>);
@@ -42,13 +42,13 @@ impl Chunkbase {
         let heightmap = block_on(perlin.compute_from_fractal((workgroups_x as u32, workgroups_y as u32, 1))).unwrap();
         #[cfg(feature = "debug")]
         info!("Thread locked for: {:?}", start.elapsed());
-        let chunkmap: &[[[f32; 32]; 32]; 16384] =  unsafe { &*(heightmap.as_ptr() as *const [[[f32; 32]; 32]; 16384]) };
+        let chunkmap: &[[[f32; CHUNK_WIDTH]; CHUNK_HEIGHT]; 16384] =  unsafe { &*(heightmap.as_ptr() as *const [[[f32; CHUNK_WIDTH]; CHUNK_HEIGHT]; 16384]) };
 
         let chunks: HashMap<(i32, i32), Chunk> = (0..MAP_HEIGHT)
             .into_par_iter()
             .flat_map_iter(|chunk_y| (0..MAP_WIDTH).map(move |chunk_x| (chunk_x, chunk_y)))
             .map(|(x, y)| {
-                let slice: &[[f32; 32]; 32] = &chunkmap[x + y * MAP_WIDTH];
+                let slice: &[[f32; CHUNK_WIDTH]; CHUNK_HEIGHT] = &chunkmap[x + y * MAP_WIDTH];
 
                 let mut halo: [f32; CHUNK_WIDTH + CHUNK_HEIGHT + 1] = [0.0; CHUNK_WIDTH + CHUNK_HEIGHT + 1];
                 if x < MAP_WIDTH - 1 && y < MAP_HEIGHT - 1 {
@@ -72,13 +72,13 @@ impl Chunkbase {
                     halo[CHUNK_HEIGHT + CHUNK_WIDTH] = chunkmap[(x + 1) + ((y + 1) * MAP_WIDTH)][0][0]; 
                 }
 
-                let mut chunk_data = ChunkData::new(&slice, &halo);
+                let mut chunk_data = ChunkData::new(slice, &halo);
                 let mesh = chunk_data.into_mesh_with_normals();
 
                 let flat_slice = slice.iter().flat_map(|row| row.iter().copied()).collect();
                 let collider = Collider::heightfield(flat_slice, CHUNK_WIDTH, CHUNK_HEIGHT, Vec3::ONE);
                 let chunk = Chunk { 
-                    transform: Transform::from_xyz((x * 32) as f32, 0., (y * 32) as f32), 
+                    transform: Transform::from_xyz((x * CHUNK_WIDTH) as f32, 0., (y * CHUNK_HEIGHT) as f32), 
                     collider: collider,
                     mesh: mesh,
                 };
@@ -112,10 +112,10 @@ impl Chunk {
 }
 
 impl ChunkData {
-    pub fn new(heightmap: &[[f32; 32]; 32], halo: &[f32; CHUNK_HEIGHT + CHUNK_WIDTH + 1]) -> Self {
-        let vertex_buffer: Vec<[f32; 3]> = (0..=32)
+    pub fn new(heightmap: &[[f32; CHUNK_WIDTH]; CHUNK_HEIGHT], halo: &[f32; CHUNK_HEIGHT + CHUNK_WIDTH + 1]) -> Self {
+        let vertex_buffer: Vec<[f32; 3]> = (0..=CHUNK_HEIGHT)
             .into_par_iter()
-            .flat_map_iter(|y| (0..=32).map(move |x| (x, y)))
+            .flat_map_iter(|y| (0..=CHUNK_WIDTH).map(move |x| (x, y)))
             .map(|(x, y)| {
                  [
                     x as f32,
@@ -161,19 +161,4 @@ impl ChunkData {
         mesh.compute_smooth_normals();
         mesh
     }
-}
-pub fn get_circle_area(cx: i32, cy: i32, radius: i32) -> Vec<(i32, i32)> {
-        let mut chunks = Vec::with_capacity((radius * 2 + 1).pow(2) as usize);
-        let radius_sq = radius * radius;
-
-        for y in -radius..=radius {
-            let y_sq = y * y;
-            for x in -radius..=radius {
-                if x * x + y_sq <= radius_sq {
-                    let chunk_coords = (cx.wrapping_add(x), cy.wrapping_add(y));
-                        chunks.push(chunk_coords);
-                }
-            }
-        }
-    chunks
 }

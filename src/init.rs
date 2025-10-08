@@ -7,6 +7,12 @@ use bevy_rapier3d::prelude::Collider;
 
 use crate::{noise::perlin::Perlin, player::{camera_controller::CameraController, player::Player}, simulation::physics::WorldState, terrain::{chunks::{Chunkbase, RenderDistance, RenderedChunks}, grid::{ChunkRadius, CurrentChunk}}};
 
+#[derive(Component)]
+pub struct DebugText;
+
+#[derive(Component)]
+struct Compass;
+
 pub struct Init;
 
 impl Plugin for Init {
@@ -21,14 +27,6 @@ impl Plugin for Init {
             .add_systems(Update, update_compass);
     }
 }
-
-
-
-#[derive(Component)]
-pub struct DebugText;
-
-#[derive(Component)]
-struct Compass;
 
 fn init_resources(mut commands: Commands, perlin: Res<Perlin>) {
     let chunkbase: Chunkbase = Chunkbase::new(&perlin);

@@ -1,4 +1,4 @@
-struct Data { width: u32, height: u32, scale: f32 };
+struct Data { width: u32, height: u32, size: u32, scale: f32 };
 struct Seed { data: array<u32> };
 struct Vectors { data: array<vec2<f32>> };
 struct Output { data: array<f32> };
@@ -69,8 +69,8 @@ fn from_fractal(x: f32, y: f32, octaves: u32, lacunarity: f32, persistence: f32)
 
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let CHUNK_SIZE = 32u;
-    let CHUNK_AREA = 1024u;
+    let CHUNK_SIZE = data.size;
+    let CHUNK_AREA = CHUNK_SIZE * CHUNK_SIZE;
 
     let gx: u32 = gid.x;
     let gy: u32 = gid.y;

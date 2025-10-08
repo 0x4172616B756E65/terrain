@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use bevy::prelude::*;
 
-use crate::{player::player::Player, terrain::chunks::{Chunkbase, RenderDistance, RenderedChunks}};
+use crate::{player::player::Player, terrain::chunks::{Chunkbase, RenderDistance, RenderedChunks, CHUNK_HEIGHT, CHUNK_WIDTH}};
 
 pub struct GridPlugin;
 
@@ -39,8 +39,8 @@ fn enter_chunk_event(
 ) {
     let (_, transform) = player_query.single().unwrap();
     let current_chunk = (
-        (transform.translation.x / 32.0).floor() as i32,
-        (transform.translation.z / 32.0).floor() as i32,
+        (transform.translation.x / CHUNK_WIDTH as f32).floor() as i32,
+        (transform.translation.z / CHUNK_HEIGHT as f32).floor() as i32,
     );
 
     if current_chunk != last_chunk.0 {
