@@ -1,6 +1,7 @@
 use bevy::color::palettes::css::RED;
 use bevy::prelude::*;
 use bevy::ecs::event::{Event, EventReader};
+use bevy_rapier3d::prelude::{Collider, RigidBody};
 
 use crate::simulation::ballistics::ammunition::Bullet;
 use crate::simulation::world::WorldState;
@@ -23,6 +24,8 @@ pub fn debug_shoot_bullet(
             bullet, 
             Transform::from_xyz(transform.translation.x, transform.translation.y, transform.translation.z),
             MeshMaterial3d(materials.add(StandardMaterial { base_color: RED.into(), perceptual_roughness: 0.5, ..default() })),
+            Collider::ball(0.4),
+            RigidBody::Dynamic,
             Mesh3d(mesh.clone())
         ));
     } 

@@ -1,7 +1,7 @@
-use bevy::{input::mouse::MouseWheel, prelude::*, reflect::Enum};
+use bevy::{input::mouse::MouseWheel, prelude::*, reflect::Enum, window::PrimaryWindow};
 use bevy_rapier3d::prelude::{KinematicCharacterController, KinematicCharacterControllerOutput};
 
-use crate::{init::Physics, player::{camera_controller::CameraController, config::player_config::{InputBinding, PlayerAction::{self, *}, PressKind}, player::Player, player_attack::DebugShootEvent, player_state::ToggleInventory}, simulation::world::{WorldState, GRAVITY}, terrain::chunks::RenderDistance};
+use crate::{init::Physics, player::{camera_controller::CameraController, config::player_config::{InputBinding, PlayerAction::{self, *}, PressKind}, cursor::Cursor, player::Player, player_attack::DebugShootEvent, player_state::ToggleInventory}, simulation::world::{WorldState, GRAVITY}, terrain::chunks::RenderDistance};
 
 pub fn handle_player_input(
     mut player_query: Query<(&mut Player, &Transform)>, 
@@ -12,8 +12,11 @@ pub fn handle_player_input(
     mut render_distance: ResMut<RenderDistance>,
     mut debug_shoot: EventWriter<DebugShootEvent>,
     mut toggle_inventory: EventWriter<ToggleInventory>,
+    mut window_query: Query<&mut Window, With<PrimaryWindow>>,
+    mut cursor: ResMut<Cursor>,
 ) {
     let (mut player, transform) = player_query.single_mut().unwrap();
+    let mut window = window_query.single_mut().unwrap();
     let camera = camera_query.single().unwrap();
 
     let yaw = -camera.rotation.y.to_radians() - 90.0_f32.to_radians();
@@ -41,7 +44,11 @@ pub fn handle_player_input(
 
             MoveSprinting => player.speed_multiplier = 2.0,
 
-            OpenInventory => { let _ = toggle_inventory.write(ToggleInventory); player.state.inventory_open ^= true; },
+            OpenInventory => { 
+                cursor.invert_lock(&mut window);
+                player.state.inventory_open ^= true; 
+                let _ = toggle_inventory.write(ToggleInventory); 
+            }
 
             DebugShootBullet => { let _ = debug_shoot.write(DebugShootEvent((*transform, forwards))); }, 
 

@@ -13,7 +13,7 @@ impl Default for PlayerState {
         PlayerState { 
             is_pressing_movement_key: false, 
             debug_flying: false,
-            inventory_open: false,
+            inventory_open: true,
         }
     }
 }
