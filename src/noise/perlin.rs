@@ -1,8 +1,6 @@
-use bevy::{ecs::resource::Resource, math::Vec2};
-use wgpu::{util::{BufferInitDescriptor, DeviceExt}, wgt::PollType, BindGroup, Buffer, BufferDescriptor, BufferUsages, CommandEncoderDescriptor, ComputePassDescriptor, ComputePipeline, ComputePipelineDescriptor, Device, DeviceDescriptor, MapMode, PipelineCompilationOptions, Queue, WasmNotSend};
+use bevy::ecs::resource::Resource;
+use wgpu::{util::{BufferInitDescriptor, DeviceExt}, wgt::PollType, BindGroup, Buffer, BufferDescriptor, BufferUsages, ComputePipeline, ComputePipelineDescriptor, Device, DeviceDescriptor, PipelineCompilationOptions, Queue};
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
-#[cfg(feature = "debug")]
-use tracing::info;
 
 use crate::terrain::chunks::{CHUNK_HEIGHT, CHUNK_WIDTH, MAP_HEIGHT, MAP_WIDTH};
 
@@ -238,8 +236,6 @@ impl Perlin {
         drop(data);
         readback_buffer.unmap();
 
-        #[cfg(feature = "debug")]
-        info!("Vertex data: {:?}", &result[0..128]);
         Ok(result)
     }
 }

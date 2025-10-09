@@ -1,4 +1,4 @@
-use bevy::{color::palettes::css::{ALICE_BLUE, WHITE}, pbr::light_consts::lux::{FULL_DAYLIGHT, FULL_MOON_NIGHT}, prelude::*, reflect::DynamicTypePath};
+use bevy::{color::palettes::css::{ALICE_BLUE, WHITE}, pbr::light_consts::lux::{FULL_DAYLIGHT, FULL_MOON_NIGHT}, prelude::*};
 
 use crate::simulation::world::WorldState;
 
@@ -61,7 +61,7 @@ impl Moon {
 }
 
 fn spawn_sun_and_moon(mut commands: Commands) {
-    //commands.spawn(Sun::new()); 
+    commands.spawn(Sun::new()); 
     commands.spawn(Moon::new()); 
 }
 

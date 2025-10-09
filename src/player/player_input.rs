@@ -1,7 +1,7 @@
 use bevy::{input::mouse::MouseWheel, prelude::*};
 use bevy_rapier3d::prelude::{KinematicCharacterController, KinematicCharacterControllerOutput};
 
-use crate::{player::{camera_controller::CameraController, config::player_config::{InputBinding, PlayerAction::{self, *}}, player::Player, player_attack::DebugShootEvent}, simulation::world::{WorldState, GRAVITY}, terrain::chunks::RenderDistance};
+use crate::{init::Physics, player::{camera_controller::CameraController, config::player_config::{InputBinding, PlayerAction::{self, *}}, player::Player, player_attack::DebugShootEvent}, simulation::world::{WorldState, GRAVITY}, terrain::chunks::RenderDistance};
 
 pub fn handle_player_input(
     mut player_query: Query<(&mut Player, &Transform)>, 
@@ -86,8 +86,10 @@ pub fn apply_player_movement(
         Option<&KinematicCharacterControllerOutput>
     )>,
     world_state: Res<WorldState>,
+    mut text_query: Query<&mut Text, With<Physics>>
 ) {
     let camera = camera_query.single().unwrap();
+    let mut text = text_query.single_mut().unwrap();
 
     let yaw_radians = -camera.rotation.y.to_radians() - 90_f32.to_radians();
     let camera_forward = Vec3::new(f32::cos(yaw_radians), 0.0, f32::sin(yaw_radians));
@@ -99,26 +101,40 @@ pub fn apply_player_movement(
         movement += camera_forward * player.direction.x;
         movement += camera_right * player.direction.z;
 
-        movement.y += player.direction.y;
+        //movement.y += player.direction.y;
 
         if movement.length_squared() > 0.0 {
             movement = movement.normalize() * player.speed * player.speed_multiplier;
-            player.momentum = movement;
+            player.momentum.x = movement.x;
+            player.momentum.z = movement.z;
         }
 
-
+        let mut grounded = "";
         if player.state.debug_flying {
             if player.direction.y != 0.0 {
                 player.momentum.y += player.direction.y * delta;
             }
         } else if let Some(output) = output {
+            grounded = match output.grounded {
+                true => "Grounded",
+                false => "Not grounded"
+            };
             if !output.grounded { 
-                info!("Not grounded");
                 player.momentum.y -= GRAVITY * delta; 
-            } else if player.direction == Vec3::ZERO {
-                player.momentum = Vec3::ZERO;
+            } else {
+                player.momentum.y = 0.0;
+            } 
+
+            if player.direction == Vec3::ZERO {
+                player.momentum.x = 0.0;
+                player.momentum.z = 0.0
+
             }
         }
+
+
+        text.clear();
+        text.push_str(format!("{:?} | {grounded}", player.momentum).as_str());
 
         controller.translation = Some(player.momentum * delta);
     }

@@ -1,9 +1,9 @@
 use std::{collections::HashMap};
 
 use bevy::prelude::*;
-use bevy::{asset::RenderAssetUsages, ecs::{bundle::Bundle, entity::Entity, resource::Resource}, render::mesh::{Indices, Mesh, PrimitiveTopology}, tasks::block_on};
+use bevy::{asset::RenderAssetUsages, ecs::{entity::Entity, resource::Resource}, render::mesh::{Indices, Mesh, PrimitiveTopology}, tasks::block_on};
 use bevy_rapier3d::prelude::Collider;
-use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::noise::{perlin::Perlin};
 
@@ -33,11 +33,7 @@ impl Chunkbase {
         let workgroups_x = (total_width  + workgroup_size_x - 1) / workgroup_size_x;
         let workgroups_y = (total_height + workgroup_size_y - 1) / workgroup_size_y;
 
-        #[cfg(feature = "debug")]
-        let start = Instant::now();
         let heightmap = block_on(perlin.compute_from_fractal((workgroups_x as u32, workgroups_y as u32, 1))).unwrap();
-        #[cfg(feature = "debug")]
-        info!("Thread locked for: {:?}", start.elapsed());
         let chunkmap: &[[[f32; CHUNK_WIDTH]; CHUNK_HEIGHT]; 16384] =  unsafe { &*(heightmap.as_ptr() as *const [[[f32; CHUNK_WIDTH]; CHUNK_HEIGHT]; 16384]) };
 
         let chunks: HashMap<(i32, i32), Chunk> = (0..MAP_HEIGHT)

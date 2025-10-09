@@ -8,6 +8,8 @@ pub struct DebugText;
 
 #[derive(Component)]
 struct Compass;
+#[derive(Component)]
+pub struct Physics;
 
 pub struct Init;
 
@@ -50,6 +52,13 @@ fn setup_scene(mut commands: Commands) {
             ..default()
         },
     )).insert(DebugText);
+
+    commands.spawn(Node {
+        position_type: PositionType::Absolute,
+        top: Val::Px(12.0),
+        right: Val::Px(12.0),
+        ..Default::default()
+    }).with_child((Text::new(""), Physics));
 }
 
 fn update_compass(mut compass_query: Query<&mut Text, With<Compass>>, camera_query: Query<&mut CameraController>) {

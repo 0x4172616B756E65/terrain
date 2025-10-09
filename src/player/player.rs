@@ -52,7 +52,7 @@ impl Default for Player {
 fn spawn_player(mut commands: Commands) {
     let camera_entity = commands.spawn((
         Camera3d::default(), 
-        Transform::from_xyz(0., 0.9, 0.),
+        Transform::from_xyz(0., 1.8, 0.),
         Projection::from(PerspectiveProjection {
             fov: 120_f32,
             ..default()
@@ -66,12 +66,13 @@ fn spawn_player(mut commands: Commands) {
 
     let player_entity = commands.spawn((
         Player::default(),
-        Transform::from_xyz(2048., 32., 2048.),
-        Collider::cuboid(0.5, 1.8, 0.25),
+        Transform::from_xyz(2080., 70., 2080.),
+        Collider::capsule_y(0.9, 0.25),
         RigidBody::KinematicPositionBased,
         KinematicCharacterController {
             up: Vec3::Y,
             offset: CharacterLength::Absolute(0.01),
+            snap_to_ground: Some(CharacterLength::Absolute(0.01)),
             ..Default::default()
         }
     )).id();

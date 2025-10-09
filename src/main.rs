@@ -1,7 +1,7 @@
 use bevy::{diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, log::tracing_subscriber};
 use bevy::prelude::*;
 use bevy_rapier3d::{plugin::{NoUserData, RapierPhysicsPlugin}, prelude::{Collider, KinematicCharacterController}, render::RapierDebugRenderPlugin};
-use terrain::{init::{DebugText, Init}, noise::perlin::Perlin, player::{cursor::CursorPlugin, inventory::inventory::InventoryPlugin, player::{Player, PlayerPlugin}}, simulation::{world::BallisticsPlugin, sun::DaylightCyclePlugin}, terrain::{chunks::{Chunkbase, RenderDistance, RenderedChunks}, grid::{ChunkRadius, CurrentChunk, GridPlugin}}};
+use terrain::{init::{DebugText, Init}, noise::perlin::Perlin, player::{cursor::CursorPlugin, inventory::inventory::InventoryPlugin, player::{Player, PlayerPlugin}}, simulation::{sun::DaylightCyclePlugin, world::BallisticsPlugin}, terrain::{chunks::{Chunkbase, RenderDistance, RenderedChunks}, grid::{ChunkRadius, CurrentChunk, GridPlugin}, props::props::PropPlugin}};
 
 
 
@@ -21,7 +21,7 @@ fn main() {
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugins(RapierDebugRenderPlugin::default())
         .add_plugins(CursorPlugin)
-        //.add_plugins(PropPlugin)
+        .add_plugins(PropPlugin)
         .add_systems(Update, debug)
         .run();
 }

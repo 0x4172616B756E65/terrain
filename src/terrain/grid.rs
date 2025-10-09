@@ -82,7 +82,13 @@ fn load_map(
                         MeshMaterial3d(green.clone()), 
                         RigidBody::Fixed,
                         chunk.transform,
-                    )).with_child((chunk.collider.clone(), Transform::from_xyz(64.0, 0.0, 64.0).with_rotation(Quat::from_rotation_y(180_f32.to_radians())))).id();
+                    )).with_child((
+                        RigidBody::Fixed,
+                        chunk.collider.clone(),
+                        Transform::from_xyz(64.0, 0.0, 64.0)
+                                .with_rotation(Quat::from_rotation_y(90_f32.to_radians()))
+                                //FIXME.with_scale(Vec3::new(1.0, 1.0, -1.0))
+                    )).id();
                 } else if chunk_info.1 == 2 {
                     chunk_entity = commands.spawn((
                         Mesh3d(meshes.add(chunk.mesh_2.clone())),
