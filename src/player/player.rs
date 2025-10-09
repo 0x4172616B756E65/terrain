@@ -24,6 +24,7 @@ pub struct Player {
     pub momentum: Vec3,
     pub direction: Vec3,
 
+    pub inventory_size: (u8, u8),
     pub current_chunk: CurrentChunk,
     pub config: PlayerConfig,
     pub state: PlayerState,
@@ -41,6 +42,7 @@ impl Default for Player {
             direction: Vec3::ZERO,
             momentum: Vec3::ZERO, 
 
+            inventory_size: (2, 4),
             current_chunk: CurrentChunk((0, 0)),
             config: PlayerConfig::default(),
             state: PlayerState::default(),

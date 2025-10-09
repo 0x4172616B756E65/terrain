@@ -1,9 +1,16 @@
+use std::fmt::Display;
+
 pub enum Item {
+    UnknownItem,
     MeleeWeapon(MeleeWeaponItem),
     RangedWeapon(RangedWeaponItem),
     //Clothing(ClothingItem),
     //Resource(ResourceItem),
 }
+
+impl Display for Item { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "Item: {}", &self) } }
+impl Default for Item { fn default() -> Self { Item::UnknownItem } }
+impl Default for &Item { fn default() -> Self { &Item::UnknownItem } }
 
 pub struct MeleeWeaponItem {
     pub kind: MeleeWeaponKind,

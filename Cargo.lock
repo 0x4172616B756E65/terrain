@@ -4436,6 +4436,7 @@ dependencies = [
  "sysinfo 0.37.2",
  "tokio",
  "tracing",
+ "uuid",
  "wgpu 26.0.1",
 ]
 

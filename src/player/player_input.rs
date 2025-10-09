@@ -1,7 +1,7 @@
-use bevy::{input::mouse::MouseWheel, prelude::*};
+use bevy::{input::mouse::MouseWheel, prelude::*, reflect::Enum};
 use bevy_rapier3d::prelude::{KinematicCharacterController, KinematicCharacterControllerOutput};
 
-use crate::{init::Physics, player::{camera_controller::CameraController, config::player_config::{InputBinding, PlayerAction::{self, *}}, player::Player, player_attack::DebugShootEvent}, simulation::world::{WorldState, GRAVITY}, terrain::chunks::RenderDistance};
+use crate::{init::Physics, player::{camera_controller::CameraController, config::player_config::{InputBinding, PlayerAction::{self, *}, PressKind}, player::Player, player_attack::DebugShootEvent, player_state::ToggleInventory}, simulation::world::{WorldState, GRAVITY}, terrain::chunks::RenderDistance};
 
 pub fn handle_player_input(
     mut player_query: Query<(&mut Player, &Transform)>, 
@@ -10,7 +10,8 @@ pub fn handle_player_input(
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     mut scroll_events: EventReader<MouseWheel>,
     mut render_distance: ResMut<RenderDistance>,
-    mut debug_shoot: EventWriter<DebugShootEvent>
+    mut debug_shoot: EventWriter<DebugShootEvent>,
+    mut toggle_inventory: EventWriter<ToggleInventory>,
 ) {
     let (mut player, transform) = player_query.single_mut().unwrap();
     let camera = camera_query.single().unwrap();
@@ -40,6 +41,8 @@ pub fn handle_player_input(
 
             MoveSprinting => player.speed_multiplier = 2.0,
 
+            OpenInventory => { let _ = toggle_inventory.write(ToggleInventory); player.state.inventory_open ^= true; },
+
             DebugShootBullet => { let _ = debug_shoot.write(DebugShootEvent((*transform, forwards))); }, 
 
             DebugIncreaseRenderDistance => render_distance.0 += 1,
@@ -51,26 +54,30 @@ pub fn handle_player_input(
     };
 
     for pressed_key in keys.get_pressed() {
-        if let Some(action) = keymap.get(&InputBinding::Key((*pressed_key).into())) {
+        if let Some((action, PressKind::Momentary)) = keymap.get(&InputBinding::Key((*pressed_key).into())) {
             apply_action(*action);
         }
     }
 
-    for pressed_button in [MouseButton::Left, MouseButton::Right] {
-        if mouse_buttons.just_pressed(pressed_button) {
-            if let Some(action) = keymap.get(&InputBinding::MouseButton(pressed_button.into())) {
-                apply_action(*action);
-            }
+    for pressed_key in keys.get_just_pressed() {
+        if let Some((action, PressKind::MonoStable)) = keymap.get(&InputBinding::Key((*pressed_key).into())) {
+            apply_action(*action);
+        }
+    }
+
+    for pressed_button in mouse_buttons.get_just_pressed() {
+        if let Some((action, PressKind::MonoStable)) = keymap.get(&InputBinding::MouseButton((*pressed_button).into())) {
+            apply_action(*action);
         }
     }
 
     for ev in scroll_events.read() {
         if ev.y > 0.0 {
-            if let Some(action) = keymap.get(&InputBinding::MouseWheelUp) {
+            if let Some((action, PressKind::MonoStable)) = keymap.get(&InputBinding::MouseWheelUp) {
                 apply_action(*action);
             }
         } else if ev.y < 0.0 {
-            if let Some(action) = keymap.get(&InputBinding::MouseWheelDown) {
+            if let Some((action, PressKind::MonoStable)) = keymap.get(&InputBinding::MouseWheelDown) {
                 apply_action(*action);
             }
         }

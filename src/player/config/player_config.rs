@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::player::config::{player_config::PlayerAction::*, serde_keyboard::SerdeKeyCode, serde_mouse::SerdeMouseCode};
+use crate::player::config::{player_config::{PlayerAction::*, PressKind::*}, serde_keyboard::SerdeKeyCode, serde_mouse::SerdeMouseCode};
 use bevy::input::{keyboard::KeyCode::*, mouse::MouseButton::*};
 use serde::{Deserialize, Serialize};
 
@@ -9,7 +9,7 @@ pub struct PlayerConfig {
     pub fov: f32,
     pub lod_radius: u32,
     pub render_radius: u32,
-    pub keymap: HashMap<InputBinding, PlayerAction>,
+    pub keymap: HashMap<InputBinding, (PlayerAction, PressKind)>,
 }
 
 impl Default for PlayerConfig {
@@ -19,25 +19,33 @@ impl Default for PlayerConfig {
             lod_radius: 1,
             render_radius: 64,
             keymap: [
-                (InputBinding::Key(KeyH.into()), MoveForwards),
-                (InputBinding::Key(KeyS.into()), MoveLeftwards),
-                (InputBinding::Key(KeyT.into()), MoveRightwards),
-                (InputBinding::Key(KeyM.into()), MoveBackwards),
-                (InputBinding::Key(KeyA.into()), MoveSprinting),
+                (InputBinding::Key(KeyH.into()), (MoveForwards, Momentary)),
+                (InputBinding::Key(KeyS.into()), (MoveLeftwards, Momentary)),
+                (InputBinding::Key(KeyT.into()), (MoveRightwards, Momentary)),
+                (InputBinding::Key(KeyM.into()), (MoveBackwards, Momentary)),
+                (InputBinding::Key(KeyA.into()), (MoveSprinting, Momentary)),
 
-                (InputBinding::Key(Space.into()), FlyUpwards),
-                (InputBinding::Key(Backspace.into()), FlyDownwards),
+                (InputBinding::Key(Space.into()), (FlyUpwards, Momentary)),
+                (InputBinding::Key(Backspace.into()), (FlyDownwards, Momentary)),
 
-                (InputBinding::Key(KeyW.into()), InteractGeneric),
+                (InputBinding::Key(KeyW.into()), (InteractGeneric, MonoStable)),
+                (InputBinding::Key(Tab.into()), (OpenInventory, MonoStable)),
 
-                (InputBinding::MouseButton(Left.into()), DebugShootBullet),
-                (InputBinding::MouseWheelUp, DebugIncreaseRenderDistance),
-                (InputBinding::MouseWheelDown, DebugDecreaseRenderDistance),
-                (InputBinding::Key(KeyX.into()), DebugToggleFlight),
+                (InputBinding::MouseButton(Left.into()), (DebugShootBullet, MonoStable)),
+                (InputBinding::MouseWheelUp, (DebugIncreaseRenderDistance, MonoStable)),
+                (InputBinding::MouseWheelDown, (DebugDecreaseRenderDistance, MonoStable)),
+                (InputBinding::Key(KeyX.into()), (DebugToggleFlight, MonoStable)),
 
             ].iter().cloned().collect(),
         }
     }
+}
+
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PressKind {
+    MonoStable,
+    Momentary
 }
 
 
@@ -49,7 +57,7 @@ pub enum InputBinding {
     MouseWheelDown,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Hash, Serialize, Deserialize)]
 pub enum PlayerAction {
     MoveForwards,
     MoveBackwards,
@@ -61,6 +69,7 @@ pub enum PlayerAction {
     FlyDownwards,
 
     InteractGeneric,
+    OpenInventory,
 
     WeaponAttack,
     WeaponAim,
